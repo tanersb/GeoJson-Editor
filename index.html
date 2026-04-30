@@ -383,9 +383,32 @@ select:focus{border-color:var(--acc2)}
   .veil,.drawer{display:none!important}
   .infobar{display:none!important}
 }
+
+#module-loader-overlay {
+  position: fixed; inset: 0; z-index: 9999;
+  background: #0a0d14; display: flex; align-items: center; justify-content: center;
+  transition: opacity 0.5s ease;
+}
+.loader-content { text-align: center; }
+.loader-spinner {
+  width: 40px; height: 40px; border: 3px solid var(--bd); border-top-color: var(--acc2);
+  border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 15px;
+}
+#loader-status { font-size: 14px; color: var(--tx); margin-bottom: 5px; font-weight: 600; }
+#loader-module-name { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--acc2); }
+@keyframes spin { to { transform: rotate(360deg); } }
+
 </style>
 </head>
 <body>
+<!-- Modül Yüklenme Ekranı -->
+<div id="module-loader-overlay">
+  <div class="loader-content">
+    <div class="loader-spinner"></div>
+    <div id="loader-status">Sistem başlatılıyor...</div>
+    <div id="loader-module-name">Modüller taranıyor</div>
+  </div>
+</div>
 
 <!-- TOPBAR -->
 <header class="topbar">
@@ -633,7 +656,15 @@ window.NCZViewer = (function(){
   ].forEach(([k,v])=>proj4.defs(k,v));
 
   // ── Harita ────────────────────────────────────────────────────
-  const map = L.map('map',{center:[39.1,35.2],zoom:6,zoomControl:true,scrollWheelZoom:true});
+  // preferCanvas: true ekleyerek noktaların resme dahil edilmesini garanti ediyoruz
+  const map = L.map('map',{
+  center:[39.1,35.2],
+  zoom:6,
+  zoomControl:true,
+  scrollWheelZoom:true,
+  preferCanvas: true 
+  });
+  
   const TILES = {
     dark: ['https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', '<a href="https://www.linkedin.com/in/tanersb/" target="_blank">@tanersb</a>'],
     light:['https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png','<a href="https://www.linkedin.com/in/tanersb/" target="_blank">@tanersb</a>'],
@@ -868,35 +899,31 @@ window.NCZViewer = (function(){
 
   // ── Modül kayıt sistemi ────────────────────────────────────────
   const _modules = [];
-  function registerModule(mod){
-    /*
-      mod = {
-        name: 'my-module',          // zorunlu - benzersiz isim
-        init(api) {},               // zorunlu - api = NCZViewer public API
-        // isteğe bağlı hook'lar:
-        onFileLoaded(data) {},      // {buf, filename, epsg}
-        onFileParsed(data) {},      // {geometries, layers, epsg}
-        onDataCleared() {},
-        onLayerToggle(data) {},     // {lc, visible}
-        onMapClick(data) {},        // {latlng, utm}
-        onContextMenu(data) {},     // {latlng, utm}
-      }
-    */
+function registerModule(mod) {
     if(_modules.find(m=>m.name===mod.name)){
       console.warn(`[NCZViewer] Modül zaten kayıtlı: ${mod.name}`); return;
     }
+    
+    // Yüklenme ekranını güncelle
+    const statusEl = document.getElementById('loader-module-name');
+    if (statusEl) {
+        statusEl.textContent = `Yükleniyor: ${mod.name}...`;
+    }
+
     _modules.push(mod);
-    // Event hook'larını bağla
+    
     if(mod.onFileLoaded)  events.on('file:loaded',   data=>mod.onFileLoaded(data));
     if(mod.onFileParsed)  events.on('file:parsed',   data=>mod.onFileParsed(data));
     if(mod.onDataCleared) events.on('data:cleared',  ()=>mod.onDataCleared());
     if(mod.onLayerToggle) events.on('layer:toggle',  data=>mod.onLayerToggle(data));
     if(mod.onMapClick)    events.on('map:click',      data=>mod.onMapClick(data));
     if(mod.onContextMenu) events.on('map:contextmenu',data=>mod.onContextMenu(data));
-    // Modülü başlat
-    try{ mod.init(publicAPI); }
-    catch(e){ console.error(`[NCZViewer] Modül init hatası: ${mod.name}`,e); }
-    console.log(`[NCZViewer] Modül yüklendi: ${mod.name}`);
+
+    try {
+      mod.init(publicAPI);
+    } catch(e) {
+      console.error(`[NCZViewer] Modül init hatası: ${mod.name}`, e);
+    }
   }
 
   // ── Public API (modüller buna erişir) ─────────────────────────
@@ -1165,6 +1192,24 @@ window.NCZViewer = (function(){
 //  });
 // ════════════════════════════════════════════════════════════════
 </script>
+<script>
+  // Tüm scriptler işlendikten sonra ekranı kapat
+  window.addEventListener('load', () => {
+    const overlay = document.getElementById('module-loader-overlay');
+    const status = document.getElementById('loader-status');
+    const modName = document.getElementById('loader-module-name');
+
+    if (status) status.textContent = "Sistem Hazır!";
+    if (modName) modName.textContent = "Harita yükleniyor...";
+
+    setTimeout(() => {
+      if (overlay) {
+        overlay.style.opacity = '0';
+        setTimeout(() => overlay.style.display = 'none', 500);
+      }
+    }, 800); // Kullanıcının "Hazır" mesajını görmesi için kısa bir bekleme
+  });
+</script>
 
 <!-- ═══ MODÜLLER ═══
   Her modül hazır olunca yorumu kaldır.
@@ -1173,14 +1218,14 @@ window.NCZViewer = (function(){
 
 <!-- ── Parser Modülleri ── -->
 <script src="modules/parser-v1-points.js"></script>
-<!-- <script src="modules/parser-v1-lines.js"></script> -->
-<!-- <script src="modules/parser-v1-polygons.js"></script> -->
-<!-- <script src="modules/parser-v2.js"></script> -->
-
-<!-- ── Renderer Modülleri ── -->
 <script src="modules/points.js"></script>
-<script src="modules/label-toggle.js"></script> <!-- Yeni eklenen -->
+<script src="modules/label-toggle.js"></script>
 <script src="modules/z-toggle.js"></script>
+<script src="modules/add-point.js"></script>
+<script src="modules/layer-zoom.js"></script>
+<script src="modules/layer-color-picker.js"></script>
+<script src="modules/html2canvas.min.js"></script>
+<script src="modules/map-export.js"></script>
 <!-- <script src="modules/lines.js"></script> -->
 <!-- <script src="modules/polygons.js"></script> -->
 
