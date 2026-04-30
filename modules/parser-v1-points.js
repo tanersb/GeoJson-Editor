@@ -12,8 +12,8 @@
  *   base+0  : LC      (1 byte)  — Layer kodu
  *   base+1  : X       (8 byte)  — Northing (UTM Kuzey)
  *   base+9  : Y       (8 byte)  — Easting  (UTM Doğu)
- *   base+17 : Z       (8 byte)  — Yükseklik
- *   base+25 : skip    (55 byte) — Font/stil bilgisi, atlanır
+ *   base+17 : Z       (4 byte)  — Yükseklik (Float32 olarak düzeltildi)
+ *   base+21 : skip    (59 byte) — Font/stil bilgisi, atlanır
  *   base+80 : Name    (21 byte) — Null-terminated, Türkçe destekli
  *
  * Layer tablosu:
@@ -173,8 +173,6 @@
 
   // ── Nokta blokları tarayıcı ────────────────────────────────────
   // Tüm geomType=1 (Point) bloklarını bulur ve parse eder.
-  // Diğer geometri tipleri bu modül tarafından tanınır ama atlanır —
-  // onlar kendi modüllerinde (lines.js, polygons.js) işlenir.
   function parsePoints(buf) {
     const v  = new DataView(buf);
     const a  = new Uint8Array(buf);
@@ -202,7 +200,8 @@
           const lc   = a[base];
           const x    = v.getFloat64(base + 1,  true); // Northing
           const y    = v.getFloat64(base + 9,  true); // Easting
-          const z    = v.getFloat64(base + 17, true); // Yükseklik
+          // ── DÜZELTME: Z artık Float32 olarak okunuyor ──[cite: 1]
+          const z    = v.getFloat32(base + 17, true); 
           const name = readName(a, base);
 
           if (isValidUTM(x, y)) {
@@ -212,7 +211,7 @@
               name,             // nokta etiketi
               x,                // Northing (UTM Y)
               y,                // Easting  (UTM X)
-              z,                // yükseklik
+              z,                // yükseklik[cite: 1]
               layerName: lt[lc] || `LC_${lc}`,
             });
           }
@@ -222,7 +221,7 @@
         pos += 7 + 108;
 
       } else if (BLOCK_SIZE[geomType]) {
-        // Bilinen başka tip → boyutu kadar atla (bu modülde işlenmez)
+        // Bilinen başka tip → boyutu kadar atla
         pos += 7 + BLOCK_SIZE[geomType];
 
       } else if (geomType === 7) {
@@ -266,8 +265,7 @@
 
           console.log(`[parser-v1-points] ${points.length} nokta parse edildi`);
 
-          // file:parsed event'ini yayınla
-          // (points.js ve diğer render modülleri bunu dinler)
+          // v1:points:parsed event'ini yayınla[cite: 3]
           NCZViewer.events.emit('v1:points:parsed', {
             points,
             layerTable,
@@ -286,7 +284,7 @@
     },
   });
 
-  // Parser yardımcılarını dışa aç (diğer modüller kullanabilir)
+  // Parser yardımcılarını dışa aç (diğer modüller kullanabilir)[cite: 3]
   window.NCZParserV1 = {
     isV1Format,
     readLayerTable,
