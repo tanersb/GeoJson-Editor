@@ -1,0 +1,1145 @@
+<!DOCTYPE html>
+<html lang="tr" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Online NCZ Viewer</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap');
+
+/* ── RESET ── */
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;overflow:hidden}
+body{font-family:'Inter',system-ui,sans-serif;background:#0a0d14;color:#e2e8f4;
+  display:flex;flex-direction:column;height:100dvh;height:-webkit-fill-available}
+button{cursor:pointer;font-family:inherit;border:none;outline:none}
+input,select{font-family:inherit;outline:none}
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-thumb{background:#2a3a55;border-radius:2px}
+
+/* ── TEMA ── */
+[data-theme="dark"]{
+  --bg:#0a0d14; --s1:#111827; --s2:#1a2235; --s3:#222d42;
+  --bd:#2a3a55; --bd2:#344b6e;
+  --tx:#f0f4ff; --tx2:#a0b4cc; --mt:#6b83a0; --mt2:#3d5070;
+  --acc:#4ade80; --acc2:#60a5fa; --warn:#fbbf24; --red:#f87171;
+  --shadow:rgba(0,0,0,.6);
+}
+[data-theme="light"]{
+  --bg:#eef2f7; --s1:#ffffff; --s2:#f4f7fb; --s3:#e8eef7;
+  --bd:#d0dcea; --bd2:#b8cde0;
+  --tx:#0f1929; --tx2:#4a6080; --mt:#7a95b0; --mt2:#b8cde0;
+  --acc:#16a34a; --acc2:#2563eb; --warn:#d97706; --red:#dc2626;
+  --shadow:rgba(0,0,0,.12);
+}
+
+/* ── TOPBAR ── */
+.topbar{
+  height:52px; background:var(--s1); border-bottom:1px solid var(--bd);
+  display:flex; align-items:center; padding:0 16px; gap:14px;
+  flex-shrink:0; z-index:400; position:relative;
+  padding-left:max(16px,env(safe-area-inset-left));
+  padding-right:max(16px,env(safe-area-inset-right));
+}
+.menu-btn{
+  display:none; width:38px; height:38px;
+  border:1px solid var(--bd); border-radius:8px;
+  background:var(--s2); color:var(--tx);
+  align-items:center; justify-content:center; cursor:pointer; flex-shrink:0;
+}
+.menu-btn svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round}
+.brand{display:flex;flex-direction:column;gap:1px;flex-shrink:0}
+.brand-name{font-size:14px;font-weight:700;letter-spacing:-.3px;color:var(--tx);white-space:nowrap}
+.brand-sub{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--mt);letter-spacing:.5px}
+.topstats{display:flex;gap:20px;position:absolute;left:50%;transform:translateX(-50%);pointer-events:none}
+.tst{display:flex;flex-direction:column;align-items:center;gap:1px}
+.tst-val{font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:700;line-height:1}
+.tst-lbl{font-size:9px;color:var(--mt);text-transform:uppercase;letter-spacing:.7px}
+.topacts{display:flex;gap:6px;margin-left:auto;flex-shrink:0}
+/* Module slot: modüller buraya buton ekleyebilir */
+#topbar-modules{display:flex;gap:6px}
+.ibtn{
+  width:36px;height:36px; border-radius:8px; border:1px solid var(--bd);
+  background:var(--s2); color:var(--tx2);
+  display:flex; align-items:center; justify-content:center;
+  cursor:pointer; transition:all .15s; position:relative; flex-shrink:0;
+}
+.ibtn:hover{color:var(--tx);border-color:var(--bd2);background:var(--s3)}
+.ibtn svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round}
+.ibtn input{position:absolute;inset:0;opacity:0;cursor:pointer;font-size:0}
+
+/* ── INFO BAR (mobile) ── */
+.infobar{
+  display:none;padding:7px 16px;background:var(--s2);border-bottom:1px solid var(--bd);
+  font-family:'JetBrains Mono',monospace;font-size:11px;gap:6px;align-items:center;flex-wrap:wrap;flex-shrink:0;
+}
+.ibc{font-weight:600}.ibd{color:var(--mt2)}
+
+/* ── LAYOUT ── */
+.main{flex:1;display:flex;overflow:hidden;min-height:0}
+
+/* ── SIDEBAR ── */
+.sidebar{
+  width:252px; background:var(--s1); border-right:1px solid var(--bd);
+  display:flex; flex-direction:column; overflow:hidden; flex-shrink:0;
+}
+.sec{padding:12px 14px;border-bottom:1px solid var(--bd);flex-shrink:0}
+.sec-t{font-size:9px;font-weight:700;letter-spacing:1.1px;text-transform:uppercase;color:var(--mt);margin-bottom:9px}
+/* Module slot: modüller sidebar'a section ekleyebilir */
+#sidebar-modules{}
+
+/* Drop zone */
+.dz{
+  border:1.5px dashed var(--bd2);border-radius:10px;padding:16px 12px;
+  text-align:center;cursor:pointer;position:relative;transition:.2s;
+}
+.dz:hover,.dz.over{background:rgba(96,165,250,.08);border-color:var(--acc2)}
+.dz input{position:absolute;inset:0;opacity:0;cursor:pointer;font-size:0}
+.dz-ico{width:34px;height:34px;margin:0 auto 8px;background:var(--s3);border-radius:9px;border:1px solid var(--bd);display:flex;align-items:center;justify-content:center}
+.dz-ico svg{width:17px;height:17px;stroke:var(--mt);fill:none;stroke-width:1.4}
+.dz-title{font-size:12px;font-weight:600;color:var(--tx);margin-bottom:2px}
+.dz-sub{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--mt)}
+.fname{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--acc);margin-top:7px;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* Select */
+select{
+  width:100%;background:var(--s2);border:1.5px solid var(--bd);color:var(--tx);
+  padding:8px 30px 8px 10px;border-radius:8px;
+  font-family:'JetBrains Mono',monospace;font-size:11px;cursor:pointer;
+  -webkit-appearance:none;appearance:none;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%236b83a0' fill='none' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 10px center;
+}
+select:focus{border-color:var(--acc2)}
+
+/* Buttons */
+.btn{
+  width:100%;padding:9px 12px;font-size:12px;font-weight:600;border-radius:8px;
+  border:1.5px solid var(--bd);background:var(--s2);color:var(--tx);
+  display:flex;align-items:center;justify-content:center;gap:7px;
+  cursor:pointer;transition:.15s;margin-top:6px;min-height:38px;
+}
+.btn:hover:not(:disabled){background:var(--s3);border-color:var(--acc2)}
+.btn:disabled{opacity:.3;cursor:not-allowed}
+.btn.primary{background:var(--acc2);border-color:var(--acc2);color:#fff}
+.btn.primary:hover:not(:disabled){opacity:.88}
+.btn.sm{font-size:11px;padding:7px 9px;min-height:32px;margin-top:0;flex:1}
+.btn-row{display:flex;gap:5px}
+
+/* Layer controls */
+.lc-strip{display:flex;gap:4px;padding:7px 14px;border-bottom:1px solid var(--bd);flex-shrink:0}
+.lcbtn{display:flex;align-items:center;gap:3px;font-size:10px;font-family:'JetBrains Mono',monospace;padding:5px 9px;border-radius:6px;min-height:28px;border:1px solid var(--bd);background:var(--s2);color:var(--tx);cursor:pointer;transition:.15s}
+.lcbtn:hover{border-color:var(--bd2)}
+.lcbtn.del:hover{border-color:var(--red);color:var(--red)}
+.srch{padding:7px 14px;border-bottom:1px solid var(--bd);flex-shrink:0;position:relative}
+.srch-ico{position:absolute;left:22px;top:50%;transform:translateY(-50%);color:var(--mt);font-size:12px;pointer-events:none}
+.srch-inp{width:100%;background:var(--s2);border:1px solid var(--bd);color:var(--tx);padding:7px 10px 7px 28px;border-radius:7px;font-family:'JetBrains Mono',monospace;font-size:11px;min-height:32px}
+.srch-inp:focus{border-color:var(--acc2)}
+
+/* Layer list */
+.l-scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;min-height:0}
+.l-empty{padding:24px 14px;text-align:center;font-size:11px;color:var(--mt);font-family:'JetBrains Mono',monospace}
+.litem{display:flex;align-items:center;gap:6px;padding:7px 10px;border-bottom:1px solid rgba(42,58,85,.4);transition:.1s}
+.litem:hover{background:var(--s2)}
+.litem.off .lname{opacity:.3}
+.l-eye{width:28px;height:28px;border-radius:6px;background:transparent;border:none;color:var(--mt);font-size:14px;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0}
+.l-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+.lname{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--tx)}
+.lcnt{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--mt);background:var(--s3);padding:2px 6px;border-radius:7px;border:1px solid var(--bd);flex-shrink:0;cursor:pointer}
+.lcnt:hover{border-color:var(--bd2)}
+.l-oprow{display:none;padding:3px 10px 5px 38px;background:var(--s2);border-bottom:1px solid rgba(42,58,85,.4);align-items:center;box-sizing:border-box;overflow:hidden}
+.litem.exp + .l-oprow{display:flex}
+.l-oprow input[type=range]{flex:1;min-width:0;height:3px;cursor:pointer;accent-color:var(--acc2)}
+.op-val{display:none}
+.expbar{padding:10px 14px;border-top:1px solid var(--bd);flex-shrink:0}
+
+/* ── MAP AREA ── */
+.map-area{flex:1;position:relative;min-width:0;min-height:0}
+#map{position:absolute;inset:0;background:var(--bg);touch-action:pan-x pan-y}
+
+/* Map tabs - sağ üstte, yatay */
+.map-tabs{
+  position:absolute;top:10px;right:10px;z-index:500;
+  display:flex;flex-direction:row;
+  background:var(--s1);border:1px solid var(--bd);border-radius:9px;
+  overflow:hidden;box-shadow:0 4px 16px var(--shadow);
+}
+.mtab{
+  padding:8px 13px;font-size:11px;font-weight:600;
+  border:none;background:transparent;color:var(--mt);cursor:pointer;
+  border-right:1px solid var(--bd);transition:.15s;white-space:nowrap;
+}
+.mtab:last-child{border-right:none}
+.mtab.active{background:rgba(96,165,250,.15);color:var(--acc2)}
+.mtab:hover:not(.active){color:var(--tx)}
+
+/* Module panel slot: modüller haritanın üzerine panel ekleyebilir */
+#map-modules{position:absolute;top:10px;right:10px;z-index:500;display:flex;flex-direction:column;gap:8px}
+
+/* Loading bar */
+.loadbar{position:absolute;top:0;left:0;right:0;height:3px;z-index:999;display:none;overflow:hidden}
+.loadbar::after{content:'';position:absolute;height:100%;background:linear-gradient(90deg,var(--acc2),var(--acc));animation:prg 1.4s ease-in-out infinite}
+@keyframes prg{0%{left:-60%;width:60%}100%{left:110%;width:60%}}
+
+/* ── CONTEXT MENU ── */
+.ctx{
+  position:fixed;z-index:2000;display:none;
+  background:var(--s1);border:1px solid var(--bd2);border-radius:10px;
+  box-shadow:0 8px 28px var(--shadow);min-width:215px;overflow:hidden;
+}
+.ctx-hd{padding:9px 13px 7px;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.9px;text-transform:uppercase;color:var(--mt);border-bottom:1px solid var(--bd)}
+.ctx-coords{padding:8px 13px;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--tx2);border-bottom:1px solid var(--bd)}
+.ctx-coords span{display:block;margin-bottom:2px}
+.ctx-coords b{color:var(--acc)}
+/* Module slot: modüller context menu'ya item ekleyebilir */
+#ctx-modules{}
+.ctx-row{display:flex;align-items:center;gap:9px;padding:9px 13px;font-size:12px;cursor:pointer;color:var(--tx);transition:.15s}
+.ctx-row:hover{background:var(--s2)}
+.ctx-row svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.8;flex-shrink:0;opacity:.6}
+.ctx-sep{height:1px;background:var(--bd);margin:3px 0}
+.ctx-row.close{color:var(--mt)}
+
+/* ── POPUP ── */
+.leaflet-popup-content-wrapper{
+  background:var(--s1)!important;color:var(--tx)!important;
+  border:1px solid var(--bd2)!important;border-radius:11px!important;
+  box-shadow:0 8px 24px var(--shadow)!important;padding:0!important;
+}
+.leaflet-popup-content{margin:0!important}
+.leaflet-popup-tip{background:var(--s1)!important}
+.leaflet-popup-close-button{color:var(--mt)!important;top:9px!important;right:9px!important;font-size:17px!important}
+.pop-hd{font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--mt);padding:10px 13px 8px;border-bottom:1px solid var(--bd)}
+.pop-tbl{padding:8px 13px;min-width:170px;max-width:260px}
+.pop-tbl td{padding:2.5px 0;font-size:11px;font-family:'JetBrains Mono',monospace;vertical-align:top}
+.pop-tbl td:first-child{color:var(--mt);padding-right:10px;white-space:nowrap;min-width:65px}
+.pop-tbl td:last-child{color:var(--tx);word-break:break-all;font-weight:600}
+/* Popup aksiyon butonları */
+.pop-actions{display:flex;gap:6px;justify-content:flex-end;padding:8px 13px 10px;border-top:1px solid var(--bd)}
+/* Module slot: modüller popup'a buton ekleyebilir */
+.pop-actions-modules{}
+.pop-btn{
+  width:30px;height:30px;border-radius:7px;
+  background:var(--s2);border:1px solid var(--bd);color:var(--tx2);
+  font-size:15px;display:flex;align-items:center;justify-content:center;
+  cursor:pointer;transition:.15s;flex-shrink:0;
+}
+.pop-btn:hover{background:var(--s3);border-color:var(--bd2);color:var(--tx)}
+
+/* NCZ labels */
+.ncz-lbl{
+  background:transparent!important;border:none!important;box-shadow:none!important;
+  padding:0!important;font-family:'JetBrains Mono',monospace;
+  font-size:10px;font-weight:700;color:var(--tx);
+  text-shadow:0 0 4px var(--bg),0 0 4px var(--bg),0 0 4px var(--bg);white-space:nowrap;
+}
+.ncz-lbl::before{display:none!important}
+
+/* ── LEAFLET OVERRIDES ── */
+.leaflet-bar a{background:var(--s1)!important;color:var(--tx)!important;border-color:var(--bd)!important}
+
+/* Custom kontroller */
+.ncz-ctrl{
+  background:var(--s1);border:1px solid var(--bd);
+  border-radius:9px;overflow:hidden;
+  box-shadow:0 2px 8px var(--shadow);
+  margin-top:6px!important;
+}
+.ncz-ctrl-btn{
+  display:flex;align-items:center;justify-content:center;
+  width:30px;height:30px;
+  background:transparent;border:none;color:var(--tx);
+  cursor:pointer;font-size:16px;transition:.15s;
+  border-bottom:1px solid var(--bd);
+}
+.ncz-ctrl-btn:last-child{border-bottom:none}
+.ncz-ctrl-btn:hover{background:var(--s2)}
+.ncz-ctrl-btn:active{background:var(--s3)}
+.ncz-ctrl-btn:disabled{opacity:.35;cursor:not-allowed}
+/* Konum noktası */
+.my-location-dot{
+  width:16px;height:16px;
+  border-radius:50%;
+  background:var(--acc2);
+  border:2px solid #fff;
+  box-shadow:0 0 0 3px rgba(96,165,250,.35);
+}
+.leaflet-bar a:hover{background:var(--s2)!important}
+.leaflet-control-zoom{border:1px solid var(--bd)!important;border-radius:9px!important;overflow:hidden!important;box-shadow:0 2px 8px var(--shadow)!important}
+.leaflet-control-attribution{
+  background:var(--s1)!important;color:var(--mt)!important;
+  font-size:10px!important;font-weight:600!important;
+  font-family:'JetBrains Mono',monospace!important;
+  border-top-left-radius:6px!important;
+  border:1px solid var(--bd)!important;border-right:none!important;border-bottom:none!important;
+  padding:4px 10px!important;letter-spacing:.3px!important;
+  margin-bottom:42px!important;
+}
+.leaflet-control-attribution a{color:var(--acc2)!important;text-decoration:none!important}
+.leaflet-control-attribution a:hover{text-decoration:underline!important}
+
+/* ── COORDS BAR ── */
+.cbar{
+  position:fixed;bottom:0;right:0;z-index:600;
+  background:var(--s1);
+  border-top:1px solid var(--bd);border-left:1px solid var(--bd);border-top-left-radius:8px;
+  padding:5px 13px;
+  padding-bottom:max(5px,env(safe-area-inset-bottom));
+  padding-right:max(13px,env(safe-area-inset-right));
+  pointer-events:none;white-space:nowrap;
+  display:flex;flex-direction:column;gap:2px;align-items:flex-end;
+}
+.cbar-ll{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--acc);font-weight:600}
+.cbar-utm{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--acc2);font-weight:600}
+
+/* ── TOAST ── */
+.toast{
+  position:fixed;bottom:52px;left:50%;transform:translateX(-50%);
+  padding:9px 16px;border-radius:8px;font-size:12px;font-weight:600;
+  z-index:3000;display:none;max-width:88vw;text-align:center;
+  box-shadow:0 4px 20px rgba(0,0,0,.5);font-family:'Inter',sans-serif;
+}
+.toast.ok{background:#14532d;border:1px solid #22c55e;color:#bbf7d0}
+.toast.err{background:#7f1d1d;border:1px solid #f87171;color:#fecaca}
+.toast.info{background:var(--s3);border:1px solid var(--bd2);color:var(--tx)}
+
+/* ── MOBILE DRAWER ── */
+.veil{display:none;position:fixed;inset:0;z-index:490;background:rgba(0,0,0,.55);backdrop-filter:blur(3px)}
+.veil.open{display:block}
+.drawer{
+  position:fixed;top:0;left:0;bottom:0;z-index:500;
+  width:min(255px,88vw);background:var(--s1);border-right:1px solid var(--bd);
+  display:flex;flex-direction:column;
+  transform:translateX(-100%);transition:transform .25s cubic-bezier(.4,0,.2,1);
+  box-shadow:6px 0 24px var(--shadow);overflow:hidden;
+  padding-bottom:env(safe-area-inset-bottom);
+}
+.drawer.open{transform:translateX(0)}
+.dr-hd{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--bd);background:var(--s2);flex-shrink:0}
+.dr-hd span{font-weight:700;font-size:13px;color:var(--tx)}
+.dr-cl{width:32px;height:32px;border-radius:7px;border:1px solid var(--bd);background:var(--s1);color:var(--mt);font-size:19px;display:flex;align-items:center;justify-content:center;cursor:pointer}
+.dr-stats{display:none;padding:10px 14px;background:var(--s2);border-bottom:1px solid var(--bd);flex-shrink:0;flex-wrap:wrap;gap:10px}
+.ms{display:flex;flex-direction:column;gap:1px}
+.ms b{font-size:13px;font-weight:700;font-family:'JetBrains Mono',monospace}
+.ms small{font-size:9px;color:var(--mt);text-transform:uppercase;letter-spacing:.4px}
+.dr-body{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;display:flex;flex-direction:column}
+
+/* ── RESPONSIVE ── */
+@media(max-width:768px){
+  .sidebar{display:none}.topstats{display:none!important}
+  .infobar{display:flex}.menu-btn{display:flex}
+  .map-tabs{top:8px;right:8px;left:auto}.mtab{padding:6px 10px;font-size:10px}
+}
+@media(min-width:769px){
+  .menu-btn{display:none!important}
+  .veil,.drawer{display:none!important}
+  .infobar{display:none!important}
+}
+</style>
+</head>
+<body>
+
+<!-- TOPBAR -->
+<header class="topbar">
+  <button class="menu-btn" id="menuBtn">
+    <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+  </button>
+  <div class="brand">
+    <div class="brand-name">Online NCZ Viewer</div>
+    <div class="brand-sub">GIS · GeoJSON / KML / CSV</div>
+  </div>
+  <div class="topstats" id="topStats" style="display:none">
+    <div class="tst"><span class="tst-val" id="ts-g" style="color:var(--acc)">—</span><span class="tst-lbl">Geometri</span></div>
+    <div class="tst"><span class="tst-val" id="ts-l" style="color:var(--acc2)">—</span><span class="tst-lbl">Katman</span></div>
+    <div class="tst"><span class="tst-val" id="ts-s" style="color:var(--warn)">—</span><span class="tst-lbl">Boyut</span></div>
+    <div class="tst"><span class="tst-val" id="ts-e" style="color:var(--acc2)">—</span><span class="tst-lbl">Projeksiyon</span></div>
+  </div>
+  <div class="topacts">
+    <!-- Modüller buraya buton ekler -->
+    <div id="topbar-modules"></div>
+    <button class="ibtn" id="themeBtn" title="Tema">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2m-3.5-6.5-1.4 1.4M6.9 17.1l-1.4 1.4m0-12.8 1.4 1.4m9.8 9.8 1.4 1.4"/></svg>
+    </button>
+    <div class="ibtn" title="NCZ Yükle">
+      <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+      <input type="file" id="hdrFile" accept=".ncz,.NCZ">
+    </div>
+  </div>
+</header>
+
+<!-- MOBILE INFO BAR -->
+<div class="infobar" id="infobar" style="display:none">
+  <span class="ibc" id="ib-g" style="color:var(--acc)">—</span><span class="ibd">·</span>
+  <span class="ibc" id="ib-l" style="color:var(--acc2)">—</span><span class="ibd">·</span>
+  <span class="ibc" id="ib-s" style="color:var(--warn)">—</span><span class="ibd">·</span>
+  <span class="ibc" id="ib-e" style="color:var(--acc2)">—</span>
+</div>
+
+<div class="main">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="sec">
+      <div class="sec-t">Dosya</div>
+      <div class="dz" id="dz-d">
+        <input type="file" id="fi-d" accept=".ncz,.NCZ">
+        <div class="dz-ico"><svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg></div>
+        <div class="dz-title">NCZ Sürükle veya Tıkla</div>
+        <div class="dz-sub">otomatik yüklenir · .ncz</div>
+      </div>
+      <div class="fname" id="fn-d">dosya seçilmedi</div>
+    </div>
+    <div class="sec">
+      <div class="sec-t">Projeksiyon (Kaynak CRS)</div>
+      <select id="epsg-d">
+        <option value="5254">EPSG:5254 — ITRF96 / TM30</option>
+        <option value="5255">EPSG:5255 — ITRF96 / TM33</option>
+        <option value="5256">EPSG:5256 — ITRF96 / TM36</option>
+        <option value="5257">EPSG:5257 — ITRF96 / TM39</option>
+        <option value="23035">EPSG:23035 — ED50 / UTM 35N</option>
+        <option value="23036">EPSG:23036 — ED50 / UTM 36N</option>
+        <option value="23037">EPSG:23037 — ED50 / UTM 37N</option>
+        <option value="32635">EPSG:32635 — WGS84 / UTM 35N</option>
+        <option value="32636">EPSG:32636 — WGS84 / UTM 36N</option>
+        <option value="32637">EPSG:32637 — WGS84 / UTM 37N</option>
+      </select>
+      <button class="btn primary" id="reparse-d" disabled>
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M13.5 2.5A7 7 0 1 0 15 8M13 2h3v3"/></svg>
+        Değiştir ve Yenile
+      </button>
+    </div>
+    <!-- Modüller sidebar'a ek section ekler -->
+    <div id="sidebar-modules"></div>
+    <div id="lsec-d" style="display:none">
+      <div class="lc-strip">
+        <button class="lcbtn" id="show-d">👁 Göster</button>
+        <button class="lcbtn" id="hide-d">🙈 Gizle</button>
+        <button class="lcbtn del" id="clear-d">🗑 Temizle</button>
+      </div>
+      <div class="srch"><span class="srch-ico">🔍</span>
+        <input class="srch-inp" id="srch-d" type="text" placeholder="Katman ara...">
+      </div>
+    </div>
+    <div class="l-scroll" id="ll-d"><div class="l-empty">NCZ dosyası yüklenmedi</div></div>
+    <div class="expbar" id="es-d" style="display:none">
+      <div class="sec-t">Dışa Aktar</div>
+      <div class="btn-row">
+        <button class="btn sm" id="ej-d">GeoJSON</button>
+        <button class="btn sm" id="ek-d">KML</button>
+        <button class="btn sm" id="ec-d">CSV</button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- MAP -->
+  <div class="map-area">
+    <div class="loadbar" id="loadbar"></div>
+    <div id="map"></div>
+    <div class="map-tabs">
+      <button class="mtab active" data-t="dark">Koyu</button>
+      <button class="mtab" data-t="light">Açık</button>
+      <button class="mtab" data-t="osm">OSM</button>
+      <button class="mtab" data-t="sat">Uydu</button>
+      <button class="mtab" data-t="topo">Topo</button>
+    </div>
+    <!-- Modüller haritaya panel ekler -->
+    <div id="map-modules"></div>
+  </div>
+
+</div>
+
+<!-- MOBILE DRAWER -->
+<div class="veil" id="veil"></div>
+<aside class="drawer" id="drawer">
+  <div class="dr-hd"><span>NCZ Viewer</span><button class="dr-cl" id="drCl">×</button></div>
+  <div class="dr-stats" id="dr-stats">
+    <div class="ms"><b id="ms-g" style="color:var(--acc)">—</b><small>Geometri</small></div>
+    <div class="ms"><b id="ms-l" style="color:var(--acc2)">—</b><small>Katman</small></div>
+    <div class="ms"><b id="ms-s" style="color:var(--warn)">—</b><small>Boyut</small></div>
+    <div class="ms"><b id="ms-e" style="color:var(--acc2)">—</b><small>EPSG</small></div>
+  </div>
+  <div class="dr-body">
+    <div class="sec">
+      <div class="dz" id="dz-m">
+        <input type="file" id="fi-m" accept=".ncz,.NCZ">
+        <div class="dz-ico"><svg viewBox="0 0 24 24" fill="none" stroke="var(--mt)" stroke-width="1.4"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg></div>
+        <div class="dz-title">NCZ Sürükle veya Tıkla</div>
+        <div class="dz-sub">otomatik yüklenir</div>
+      </div>
+      <div class="fname" id="fn-m">dosya seçilmedi</div>
+    </div>
+    <div class="sec">
+      <select id="epsg-m">
+        <option value="5254">EPSG:5254 — ITRF96/TM30</option>
+        <option value="5255">EPSG:5255 — ITRF96/TM33</option>
+        <option value="5256">EPSG:5256 — ITRF96/TM36</option>
+        <option value="5257">EPSG:5257 — ITRF96/TM39</option>
+        <option value="23035">EPSG:23035 — ED50/UTM 35N</option>
+        <option value="23036">EPSG:23036 — ED50/UTM 36N</option>
+        <option value="23037">EPSG:23037 — ED50/UTM 37N</option>
+        <option value="32635">EPSG:32635 — WGS84/UTM 35N</option>
+        <option value="32636">EPSG:32636 — WGS84/UTM 36N</option>
+        <option value="32637">EPSG:32637 — WGS84/UTM 37N</option>
+      </select>
+      <button class="btn primary" id="reparse-m" disabled>↺ Değiştir ve Yenile</button>
+    </div>
+    <div id="lsec-m" style="display:none">
+      <div class="lc-strip">
+        <button class="lcbtn" id="show-m">👁 Göster</button>
+        <button class="lcbtn" id="hide-m">🙈 Gizle</button>
+        <button class="lcbtn del" id="clear-m">🗑 Temizle</button>
+      </div>
+      <div class="srch"><span class="srch-ico">🔍</span>
+        <input class="srch-inp" id="srch-m" type="text" placeholder="Katman ara...">
+      </div>
+    </div>
+    <div class="l-scroll" id="ll-m"><div class="l-empty">NCZ dosyası yüklenmedi</div></div>
+    <div class="expbar" id="es-m" style="display:none">
+      <div class="btn-row">
+        <button class="btn sm" id="ej-m">GeoJSON</button>
+        <button class="btn sm" id="ek-m">KML</button>
+        <button class="btn sm" id="ec-m">CSV</button>
+      </div>
+    </div>
+  </div>
+</aside>
+
+<!-- CONTEXT MENU -->
+<div class="ctx" id="ctx">
+  <div class="ctx-hd">📍 Konum Bilgisi</div>
+  <div class="ctx-coords">
+    <span>Lat (Kuzey): <b id="ctx-lat">—</b></span>
+    <span>Lon (Doğu): <b id="ctx-lon">—</b></span>
+    <span style="margin-top:5px;padding-top:5px;border-top:1px solid var(--bd)">Y UTM (Kuzey): <b id="ctx-north">—</b></span>
+    <span>X UTM (Doğu): <b id="ctx-east">—</b></span>
+  </div>
+  <!-- Modüller buraya item ekler -->
+  <div id="ctx-modules"></div>
+  <div class="ctx-row" id="ctx-cll">
+    <svg viewBox="0 0 24 24"><path d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+    Lat / Lon kopyala
+  </div>
+  <div class="ctx-sep"></div>
+  <div class="ctx-row" id="ctx-cutm">
+    <svg viewBox="0 0 24 24"><path d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+    UTM (Y / X) kopyala
+  </div>
+  <div class="ctx-sep"></div>
+  <div class="ctx-row close" id="ctx-close">
+    <svg viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg>
+    Kapat
+  </div>
+</div>
+
+<!-- COORDS BAR -->
+<div class="cbar" id="cbar">
+  <span class="cbar-ll" id="cbar-ll">Haritaya tıkla → koordinat</span>
+  <span class="cbar-utm" id="cbar-utm"></span>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/proj4@2.9.0/dist/proj4.js"></script>
+<script>
+// ════════════════════════════════════════════════════════════════
+//  NCZViewer CORE  —  v1.0
+//  Tüm modüller window.NCZViewer üzerinden erişir.
+//  Yeni özellik eklemek için: window.NCZViewer.registerModule(mod)
+// ════════════════════════════════════════════════════════════════
+
+window.NCZViewer = (function(){
+
+  // ── Basit EventEmitter ─────────────────────────────────────────
+  const events = (function(){
+    const _h = {};
+    return {
+      on(ev, fn){ (_h[ev]||(_h[ev]=[])).push(fn); },
+      off(ev, fn){ if(_h[ev]) _h[ev]=_h[ev].filter(f=>f!==fn); },
+      emit(ev, data){ (_h[ev]||[]).forEach(fn=>{ try{fn(data);}catch(e){console.error('[NCZViewer event]',ev,e);} }); },
+    };
+  })();
+
+  // ── Helpers ────────────────────────────────────────────────────
+  const $  = id => document.getElementById(id);
+  const $$ = sel => document.querySelectorAll(sel);
+  let _tT = null;
+  function toast(msg, type='info', ms=3000){
+    const el=$('toast');el.textContent=msg;el.className='toast '+type;el.style.display='block';
+    clearTimeout(_tT);_tT=setTimeout(()=>el.style.display='none',ms);
+  }
+  function loading(on){ $('loadbar').style.display=on?'block':'none'; }
+
+  // ── Proj4 tanımları ────────────────────────────────────────────
+  [['EPSG:23035','+proj=utm +zone=35 +ellps=intl +towgs84=-87,-98,-121,0,0,0,0 +units=m +no_defs'],
+   ['EPSG:23036','+proj=utm +zone=36 +ellps=intl +towgs84=-87,-98,-121,0,0,0,0 +units=m +no_defs'],
+   ['EPSG:23037','+proj=utm +zone=37 +ellps=intl +towgs84=-87,-98,-121,0,0,0,0 +units=m +no_defs'],
+   ['EPSG:32635','+proj=utm +zone=35 +datum=WGS84 +units=m +no_defs'],
+   ['EPSG:32636','+proj=utm +zone=36 +datum=WGS84 +units=m +no_defs'],
+   ['EPSG:32637','+proj=utm +zone=37 +datum=WGS84 +units=m +no_defs'],
+   ['EPSG:5254','+proj=tmerc +lat_0=0 +lon_0=30 +k=1 +x_0=500000 +y_0=0 +ellps=GRS80 +units=m +no_defs'],
+   ['EPSG:5255','+proj=tmerc +lat_0=0 +lon_0=33 +k=1 +x_0=500000 +y_0=0 +ellps=GRS80 +units=m +no_defs'],
+   ['EPSG:5256','+proj=tmerc +lat_0=0 +lon_0=36 +k=1 +x_0=500000 +y_0=0 +ellps=GRS80 +units=m +no_defs'],
+   ['EPSG:5257','+proj=tmerc +lat_0=0 +lon_0=39 +k=1 +x_0=500000 +y_0=0 +ellps=GRS80 +units=m +no_defs'],
+  ].forEach(([k,v])=>proj4.defs(k,v));
+
+  // ── Harita ────────────────────────────────────────────────────
+  const map = L.map('map',{center:[39.1,35.2],zoom:6,zoomControl:true,scrollWheelZoom:true});
+  const TILES = {
+    dark: ['https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', '<a href="https://www.linkedin.com/in/tanersb/" target="_blank">@tanersb</a>'],
+    light:['https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png','<a href="https://www.linkedin.com/in/tanersb/" target="_blank">@tanersb</a>'],
+    osm:  ['https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',            '<a href="https://www.linkedin.com/in/tanersb/" target="_blank">@tanersb</a>'],
+    sat:  ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}','<a href="https://www.linkedin.com/in/tanersb/" target="_blank">@tanersb</a>'],
+    topo: ['https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',              '<a href="https://www.linkedin.com/in/tanersb/" target="_blank">@tanersb</a>'],
+  };
+  let _tile=null;
+  function setTile(t){
+    if(_tile)map.removeLayer(_tile);
+    const[url,attr]=TILES[t];
+    _tile=L.tileLayer(url,{attribution:attr,maxZoom:22}).addTo(map);
+    $$('.mtab').forEach(b=>b.classList.toggle('active',b.dataset.t===t));
+  }
+  setTile('dark');
+  $$('.mtab').forEach(b=>b.addEventListener('click',()=>setTile(b.dataset.t)));
+  window.addEventListener('resize',()=>setTimeout(()=>map.invalidateSize(),100));
+
+  // ── Koordinat state ────────────────────────────────────────────
+  let _epsg='5254', _ll=null, _utm=null;
+  function calcUTM(latlng){
+    try{ const[E,N]=proj4('EPSG:4326','EPSG:'+_epsg,[latlng.lng,latlng.lat]); return{E,N}; }
+    catch(e){ return null; }
+  }
+  function updateCbar(latlng, clicked=false){
+    _ll=latlng; _utm=calcUTM(latlng);
+    const prefix = clicked ? '📍 ' : '';
+    $('cbar-ll').textContent = `${prefix}Lat: ${latlng.lat.toFixed(6)}  Lon: ${latlng.lng.toFixed(6)}`;
+    $('cbar-utm').textContent = _utm ? `Y: ${_utm.N.toFixed(2)}  X: ${_utm.E.toFixed(2)}` : '';
+  }
+  map.on('mousemove', e => updateCbar(e.latlng));
+  map.on('click',     e => { updateCbar(e.latlng, true); events.emit('map:click',{latlng:e.latlng,utm:_utm}); });
+
+  // ── Sağ tık ───────────────────────────────────────────────────
+  const ctxEl = $('ctx');
+  function closeCtx(){ ctxEl.style.display='none'; }
+  map.on('contextmenu', e => {
+    e.originalEvent.preventDefault();
+    _ll=e.latlng; _utm=calcUTM(e.latlng);
+    $('ctx-lat').textContent   = e.latlng.lat.toFixed(6);
+    $('ctx-lon').textContent   = e.latlng.lng.toFixed(6);
+    $('ctx-north').textContent = _utm ? _utm.N.toFixed(3) : '—';
+    $('ctx-east').textContent  = _utm ? _utm.E.toFixed(3) : '—';
+    const mx=e.originalEvent.clientX, my=e.originalEvent.clientY;
+    ctxEl.style.left = (mx+220>window.innerWidth ? mx-220 : mx)+'px';
+    ctxEl.style.top  = (my+200>window.innerHeight? my-200 : my)+'px';
+    ctxEl.style.display='block';
+    events.emit('map:contextmenu',{latlng:e.latlng,utm:_utm});
+  });
+  document.addEventListener('click', e=>{ if(!ctxEl.contains(e.target))closeCtx(); });
+  document.addEventListener('keydown',e=>{ if(e.key==='Escape')closeCtx(); });
+  $('ctx-close').addEventListener('click',closeCtx);
+
+  function copyText(t){
+    navigator.clipboard?.writeText(t).catch(()=>{ const ta=document.createElement('textarea');ta.value=t;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove(); });
+    toast('Kopyalandı ✓','ok',1800);
+  }
+  $('ctx-cll').addEventListener('click',()=>{ if(_ll)copyText(`Lat: ${_ll.lat.toFixed(6)}, Lon: ${_ll.lng.toFixed(6)}`); closeCtx(); });
+  $('ctx-cutm').addEventListener('click',()=>{
+    if(!_utm){toast('UTM hesaplanamadı','err');return;}
+    copyText(`Y: ${_utm.N.toFixed(3)}, X: ${_utm.E.toFixed(3)} (EPSG:${_epsg})`);
+    closeCtx();
+  });
+
+  // ── Katman sistemi ─────────────────────────────────────────────
+  const layers = {
+    _reg: {},       // lc → {name, color, group, visible, opacity}
+    PAL: ['#4ade80','#60a5fa','#fbbf24','#f87171','#a78bfa','#06b6d4','#f472b6','#fb923c','#34d399','#a3e635','#e879f9','#2dd4bf','#f43f5e','#818cf8','#4ade80'],
+    color: lc => layers.PAL[Math.abs(parseInt(lc)) % layers.PAL.length],
+    register(lc, name, group){
+      layers._reg[lc] = layers._reg[lc] || { name, color:layers.color(lc), group, visible:true, opacity:1 };
+      return layers._reg[lc];
+    },
+    get(lc){ return layers._reg[lc]; },
+    all(){ return Object.entries(layers._reg); },
+    setVisible(lc, v){
+      const l=layers._reg[lc]; if(!l)return;
+      l.visible=v;
+      if(l.group){ l.visible ? l.group.addTo(map) : l.group.removeFrom(map); }
+      events.emit('layer:toggle',{lc,visible:v});
+    },
+    setOpacity(lc, v){
+      const l=layers._reg[lc]; if(!l)return;
+      l.opacity=v;
+      l.group?.eachLayer(ly=>{ if(ly.setOpacity)ly.setOpacity(v); if(ly.setStyle)ly.setStyle({opacity:v,fillOpacity:v*0.25}); });
+      events.emit('layer:opacity',{lc,value:v});
+    },
+    clear(){
+      Object.values(layers._reg).forEach(l=>l.group?.removeFrom(map));
+      layers._reg={};
+    },
+  };
+
+  // ── Katman listesi UI ──────────────────────────────────────────
+  function buildLayerList(lid, sid){
+    const box=$(lid), q=$(sid)?.value?.toLowerCase()||'';
+    box.innerHTML='';
+    const entries=layers.all().sort((a,b)=>(b[1].group?.getLayers().length||0)-(a[1].group?.getLayers().length||0));
+    let shown=0;
+    for(const[lc,info]of entries){
+      const n=info.group?.getLayers().length||0;
+      if(q && !info.name.toLowerCase().includes(q))continue;
+      shown++;
+      const col=info.color, on=info.visible, op=Math.round(info.opacity*100);
+      const d=document.createElement('div');
+      d.className='litem'+(on?'':' off');
+      d.innerHTML=`<button class="l-eye">${on?'👁':'🚫'}</button>
+        <div class="l-dot" style="background:${col}"></div>
+        <span class="lname" title="${info.name}">${info.name}</span>
+        <span class="lcnt" title="Opaklık ayarla">${n}</span>`;
+      const opRow=document.createElement('div');
+      opRow.className='l-oprow';
+      opRow.innerHTML=`<input type="range" min="5" max="100" value="${op}" step="5" title="Opaklık: ${op}%">`;
+      opRow.querySelector('input').addEventListener('input',e=>{
+        const val=parseInt(e.target.value)/100;
+        e.target.title='Opaklık: '+Math.round(val*100)+'%';
+        layers.setOpacity(lc,val);
+      });
+      d.querySelector('.l-eye').addEventListener('click',ev=>{
+        ev.stopPropagation();
+        layers.setVisible(lc,!info.visible);
+        refreshLayerLists();
+      });
+      d.querySelector('.lcnt').addEventListener('click',ev=>{ ev.stopPropagation(); d.classList.toggle('exp'); });
+      box.appendChild(d); box.appendChild(opRow);
+    }
+    if(!shown)box.innerHTML='<div class="l-empty">'+(entries.length?'Eşleşme yok':'NCZ dosyası yüklenmedi')+'</div>';
+  }
+  function refreshLayerLists(){
+    buildLayerList('ll-d','srch-d');
+    buildLayerList('ll-m','srch-m');
+  }
+
+  // ── Arama ─────────────────────────────────────────────────────
+  ['srch-d','srch-m'].forEach(id=>$(id)?.addEventListener('input',refreshLayerLists));
+
+  // ── İstatistikler ──────────────────────────────────────────────
+  function updateStats(geomCount, layerCount, sizeKB, epsgStr){
+    [['ts-g',geomCount],['ts-l',layerCount],['ts-s',sizeKB],['ts-e',epsgStr]].forEach(([id,v])=>$(id).textContent=v);
+    [['ib-g',geomCount+' geom'],['ib-l',layerCount+' katman'],['ib-s',sizeKB],['ib-e',epsgStr]].forEach(([id,v])=>$(id).textContent=v);
+    [['ms-g',geomCount],['ms-l',layerCount],['ms-s',sizeKB],['ms-e',epsgStr]].forEach(([id,v])=>$(id).textContent=v);
+    $('topStats').style.display='flex';
+    // infobar: sadece mobilde flex göster
+    if(window.innerWidth<=768) $('infobar').style.display='flex';
+    $('dr-stats').style.display='flex';
+  }
+  function showLayerUI(){
+    ['lsec-d','es-d','lsec-m','es-m'].forEach(id=>$(id).style.display='');
+    ['reparse-d','reparse-m'].forEach(id=>$(id).disabled=false);
+  }
+  function hideLayerUI(){
+    ['topStats','dr-stats'].forEach(id=>$(id).style.display='none');
+    $('infobar').style.display='none';
+    ['lsec-d','es-d','lsec-m','es-m'].forEach(id=>$(id).style.display='none');
+    ['reparse-d','reparse-m'].forEach(id=>$(id).disabled=true);
+    ['fn-d','fn-m'].forEach(id=>$(id).textContent='dosya seçilmedi');
+    ['ll-d','ll-m'].forEach(id=>$(id).innerHTML='<div class="l-empty">NCZ dosyası yüklenmedi</div>');
+  }
+
+  // ── Popup builder ──────────────────────────────────────────────
+  function buildPopup(rows, latlng, extraBtns=[]){
+    const tbl=rows.map(r=>`<tr><td>${r[0]}</td><td>${r[1]}</td></tr>`).join('');
+    const defaultBtns=`
+      <button class="pop-btn" title="Bu noktaya yaklaş" onclick="NCZViewer.popZoom(${latlng.lat},${latlng.lng})">🔍</button>
+      <button class="pop-btn" title="Koordinatı kopyala" onclick="NCZViewer.popCopy(this,'Lat: ${latlng.lat.toFixed(6)}, Lon: ${latlng.lng.toFixed(6)}')">📋</button>
+    `;
+    return`<div>
+      <div class="pop-hd">Öznitelikler</div>
+      <table class="pop-tbl"><tbody>${tbl}</tbody></table>
+      <div class="pop-actions">${defaultBtns}${extraBtns.join('')}</div>
+    </div>`;
+  }
+  function popZoom(lat,lng){ map.setView([lat,lng],Math.max(map.getZoom(),18),{animate:true}); map.closePopup(); }
+  function popCopy(btn,txt){
+    navigator.clipboard?.writeText(txt).catch(()=>{});
+    btn.textContent='✓'; setTimeout(()=>btn.textContent='📋',1500);
+  }
+
+  // ── Katman kontrol butonları ───────────────────────────────────
+  $('show-d').addEventListener('click',()=>{ layers.all().forEach(([lc])=>layers.setVisible(lc,true)); refreshLayerLists(); });
+  $('hide-d').addEventListener('click',()=>{ layers.all().forEach(([lc])=>layers.setVisible(lc,false)); refreshLayerLists(); });
+  $('clear-d').addEventListener('click',()=>{
+    if(!confirm('Tüm veriler silinecek?'))return;
+    layers.clear(); refreshLayerLists(); hideLayerUI();
+    events.emit('data:cleared',{});
+  });
+  ['show-m','hide-m'].forEach((id,i)=>$(id)?.addEventListener('click',()=>{
+    layers.all().forEach(([lc])=>layers.setVisible(lc,i===0)); refreshLayerLists();
+  }));
+  $('clear-m')?.addEventListener('click',()=>$('clear-d').click());
+
+  // ── EPSG ──────────────────────────────────────────────────────
+  $('epsg-d').addEventListener('change',e=>{ $('epsg-m').value=e.target.value; _epsg=e.target.value; });
+  $('epsg-m').addEventListener('change',e=>{ $('epsg-d').value=e.target.value; _epsg=e.target.value; });
+
+  // ── Dosya yükleme ──────────────────────────────────────────────
+  let _buf=null;
+  function handleFile(file){
+    if(!file)return;
+    ['fn-d','fn-m'].forEach(id=>$(id).textContent=file.name);
+    loading(true);
+    const reader=new FileReader();
+    reader.onload=e=>{
+      _buf=e.target.result;
+      events.emit('file:loaded',{buf:_buf,filename:file.name,epsg:_epsg});
+    };
+    reader.onerror=()=>{ toast('Dosya okunamadı','err'); loading(false); };
+    reader.readAsArrayBuffer(file);
+  }
+  ['fi-d','fi-m','hdrFile'].forEach(id=>$(id)?.addEventListener('change',e=>handleFile(e.target.files[0])));
+  ['dz-d','dz-m'].forEach(id=>{
+    const dz=$(id);if(!dz)return;
+    dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('over');});
+    dz.addEventListener('dragleave',()=>dz.classList.remove('over'));
+    dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('over');handleFile(e.dataTransfer.files[0]);});
+  });
+  ['reparse-d','reparse-m'].forEach(id=>$(id)?.addEventListener('click',()=>{
+    if(_buf) events.emit('file:loaded',{buf:_buf,filename:'',epsg:_epsg});
+  }));
+
+  // ── Tema ─────────────────────────────────────────────────────
+  function setTheme(t){ document.documentElement.setAttribute('data-theme',t); localStorage.setItem('ncz-theme',t); }
+  $('themeBtn').addEventListener('click',()=>setTheme(document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark'));
+  const st=localStorage.getItem('ncz-theme'); if(st)setTheme(st);
+
+  // ── Mobile drawer ─────────────────────────────────────────────
+  function openDr(){$('drawer').classList.add('open');$('veil').classList.add('open');}
+  function closeDr(){$('drawer').classList.remove('open');$('veil').classList.remove('open');}
+  $('menuBtn').addEventListener('click',openDr);
+  $('drCl').addEventListener('click',closeDr);
+  $('veil').addEventListener('click',closeDr);
+
+  // ── Modül kayıt sistemi ────────────────────────────────────────
+  const _modules = [];
+  function registerModule(mod){
+    /*
+      mod = {
+        name: 'my-module',          // zorunlu - benzersiz isim
+        init(api) {},               // zorunlu - api = NCZViewer public API
+        // isteğe bağlı hook'lar:
+        onFileLoaded(data) {},      // {buf, filename, epsg}
+        onFileParsed(data) {},      // {geometries, layers, epsg}
+        onDataCleared() {},
+        onLayerToggle(data) {},     // {lc, visible}
+        onMapClick(data) {},        // {latlng, utm}
+        onContextMenu(data) {},     // {latlng, utm}
+      }
+    */
+    if(_modules.find(m=>m.name===mod.name)){
+      console.warn(`[NCZViewer] Modül zaten kayıtlı: ${mod.name}`); return;
+    }
+    _modules.push(mod);
+    // Event hook'larını bağla
+    if(mod.onFileLoaded)  events.on('file:loaded',   data=>mod.onFileLoaded(data));
+    if(mod.onFileParsed)  events.on('file:parsed',   data=>mod.onFileParsed(data));
+    if(mod.onDataCleared) events.on('data:cleared',  ()=>mod.onDataCleared());
+    if(mod.onLayerToggle) events.on('layer:toggle',  data=>mod.onLayerToggle(data));
+    if(mod.onMapClick)    events.on('map:click',      data=>mod.onMapClick(data));
+    if(mod.onContextMenu) events.on('map:contextmenu',data=>mod.onContextMenu(data));
+    // Modülü başlat
+    try{ mod.init(publicAPI); }
+    catch(e){ console.error(`[NCZViewer] Modül init hatası: ${mod.name}`,e); }
+    console.log(`[NCZViewer] Modül yüklendi: ${mod.name}`);
+  }
+
+  // ── Public API (modüller buna erişir) ─────────────────────────
+  const publicAPI = {
+    // Harita
+    map,
+    // Event sistemi
+    events,
+    // Katman sistemi
+    layers,
+    // UI helpers
+    ui: {
+      toast, loading,
+      refreshLayerLists, updateStats, showLayerUI, hideLayerUI,
+      buildPopup,
+      // Sidebar'a yeni section ekle
+      addSidebarSection(html){ $('sidebar-modules').insertAdjacentHTML('beforeend',html); },
+      // Topbar'a buton ekle
+      addTopbarBtn(html){ $('topbar-modules').insertAdjacentHTML('beforeend',html); },
+      // Harita üstüne panel ekle
+      addMapPanel(html){ $('map-modules').insertAdjacentHTML('beforeend',html); },
+      // Context menu'ya item ekle
+      addContextItem(html){ $('ctx-modules').insertAdjacentHTML('beforeend',html); },
+    },
+    // Koordinat
+    getEpsg(){ return _epsg; },
+    getLatlng(){ return _ll; },
+    getUtm(){ return _utm; },
+    calcUTM,
+    copyText,
+    // Popup helpers
+    popZoom, popCopy,
+    // Modül kayıt
+    registerModule,
+    // Dosya buffer (parser modülü için)
+    getBuffer(){ return _buf; },
+  };
+
+  // Public erişim için popZoom/popCopy
+  window.NCZViewer = publicAPI;
+  return publicAPI;
+
+})();
+
+// ── CUSTOM MAP CONTROLS ──────────────────────────────────────────
+// Leaflet yüklendikten sonra custom kontroller ekle
+(function initCustomControls(){
+
+  // 1. "Sınırlara Sığdır" butonu
+  const FitControl = L.Control.extend({
+    options: { position: 'topleft' },
+    onAdd(map) {
+      const div = L.DomUtil.create('div', 'ncz-ctrl leaflet-bar');
+      div.innerHTML = `
+        <button class="ncz-ctrl-btn" id="ctrl-fit"
+          title="Katmanları ekrana sığdır" disabled>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>
+          </svg>
+        </button>`;
+      L.DomEvent.disableClickPropagation(div);
+      div.querySelector('#ctrl-fit').addEventListener('click', () => {
+        NCZViewer.events.emit('ui:fitBounds', {});
+      });
+      return div;
+    }
+  });
+  new FitControl().addTo(NCZViewer.map);
+
+  // fitBounds event dinleyicisi
+  NCZViewer.events.on('ui:fitBounds', () => {
+    // Görünür tüm layer'ların bounds'unu topla
+    const pts = [];
+    for (const [lc, info] of NCZViewer.layers.all()) {
+      if (!info.visible || !info.group) continue;
+      info.group.eachLayer(ly => {
+        const ll = ly.getLatLng ? ly.getLatLng() : null;
+        if (ll) pts.push([ll.lat, ll.lng]);
+        if (ly.getBounds) {
+          const b = ly.getBounds();
+          if (b.isValid()) {
+            pts.push([b.getNorth(), b.getWest()]);
+            pts.push([b.getSouth(), b.getEast()]);
+          }
+        }
+      });
+    }
+    if (pts.length === 0) {
+      NCZViewer.ui.toast('Görünür geometri yok', 'info', 2000);
+      return;
+    }
+    NCZViewer.map.fitBounds(L.latLngBounds(pts).pad(0.05), { animate: true });
+  });
+
+  // fit butonu → dosya yüklenince aktif et
+  NCZViewer.events.on('file:parsed', () => {
+    const btn = document.getElementById('ctrl-fit');
+    if (btn) btn.disabled = false;
+  });
+  // Katman listesi güncellenince de aktif et
+  const origShowUI = NCZViewer.ui.showLayerUI;
+  NCZViewer.ui.showLayerUI = function() {
+    origShowUI();
+    const btn = document.getElementById('ctrl-fit');
+    if (btn) btn.disabled = false;
+  };
+
+  // 2. Konum (Geolocate) butonu
+  const GeoControl = L.Control.extend({
+    options: { position: 'topleft' },
+    onAdd(map) {
+      const div = L.DomUtil.create('div', 'ncz-ctrl leaflet-bar');
+      div.innerHTML = `
+        <button class="ncz-ctrl-btn" id="ctrl-geo" title="Konumumu göster">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M12 2v3m0 14v3M2 12h3m14 0h3"/>
+            <circle cx="12" cy="12" r="8" stroke-opacity=".3"/>
+          </svg>
+        </button>`;
+      L.DomEvent.disableClickPropagation(div);
+      div.querySelector('#ctrl-geo').addEventListener('click', startGeolocate);
+      return div;
+    }
+  });
+  new GeoControl().addTo(NCZViewer.map);
+
+  // Konum marker'ı
+  let _geoMarker = null;
+  let _geoCircle = null;
+  let _geoWatching = false;
+  let _geoWatchId = null;
+
+  function startGeolocate() {
+    if (!navigator.geolocation) {
+      NCZViewer.ui.toast('Tarayıcınız konum desteklemiyor', 'err', 3000);
+      return;
+    }
+    const btn = document.getElementById('ctrl-geo');
+    if (_geoWatching) {
+      // Konumu kapat
+      stopGeolocate();
+      return;
+    }
+    btn.textContent = '⏳';
+    btn.style.color = 'var(--warn)';
+
+    navigator.geolocation.getCurrentPosition(
+      pos => onGeoSuccess(pos, btn),
+      err => onGeoError(err, btn),
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+  }
+
+  function onGeoSuccess(pos, btn) {
+    const lat = pos.coords.latitude;
+    const lon = pos.coords.longitude;
+    const acc = pos.coords.accuracy; // metre
+
+    // Önceki marker'ı temizle
+    if (_geoMarker) NCZViewer.map.removeLayer(_geoMarker);
+    if (_geoCircle) NCZViewer.map.removeLayer(_geoCircle);
+
+    // Doğruluk dairesi
+    _geoCircle = L.circle([lat, lon], {
+      radius:      acc,
+      color:       '#60a5fa',
+      fillColor:   '#60a5fa',
+      fillOpacity: 0.08,
+      weight:      1,
+    }).addTo(NCZViewer.map);
+
+    // Konum noktası (custom HTML marker)
+    const icon = L.divIcon({
+      html: '<div class="my-location-dot"></div>',
+      className: '',
+      iconSize: [16, 16],
+      iconAnchor: [8, 8],
+    });
+    _geoMarker = L.marker([lat, lon], { icon, zIndexOffset: 1000 })
+      .addTo(NCZViewer.map)
+      .bindPopup(`<div class="pop-hd">📍 Konumum</div>
+        <table class="pop-tbl"><tbody>
+          <tr><td>Lat</td><td>${lat.toFixed(6)}</td></tr>
+          <tr><td>Lon</td><td>${lon.toFixed(6)}</td></tr>
+          <tr><td>Doğruluk</td><td>±${Math.round(acc)} m</td></tr>
+        </tbody></table>`)
+      .openPopup();
+
+    NCZViewer.map.setView([lat, lon], Math.max(NCZViewer.map.getZoom(), 16), { animate: true });
+
+    btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="var(--acc2)"
+      stroke="var(--acc2)" stroke-width="1.5" stroke-linecap="round">
+      <circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3"/>
+      <circle cx="12" cy="12" r="8" stroke-opacity=".3" fill="none"/>
+    </svg>`;
+    btn.style.color = 'var(--acc2)';
+    btn.title = 'Konumu kapat';
+    _geoWatching = true;
+
+    NCZViewer.ui.toast(`Konum bulundu · ±${Math.round(acc)}m`, 'ok', 3000);
+  }
+
+  function onGeoError(err, btn) {
+    const msgs = {
+      1: 'Konum izni verilmedi',
+      2: 'Konum alınamadı',
+      3: 'Konum zaman aşımı',
+    };
+    NCZViewer.ui.toast(msgs[err.code] || 'Konum hatası', 'err', 4000);
+    btn.textContent = '📍';
+    btn.style.color = '';
+    _geoWatching = false;
+  }
+
+  function stopGeolocate() {
+    if (_geoWatchId) navigator.geolocation.clearWatch(_geoWatchId);
+    if (_geoMarker)  NCZViewer.map.removeLayer(_geoMarker);
+    if (_geoCircle)  NCZViewer.map.removeLayer(_geoCircle);
+    _geoMarker = _geoCircle = null;
+    _geoWatching = false; _geoWatchId = null;
+    const btn = document.getElementById('ctrl-geo');
+    if (btn) {
+      btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+        stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3"/>
+        <circle cx="12" cy="12" r="8" stroke-opacity=".3"/>
+      </svg>`;
+      btn.style.color = ''; btn.title = 'Konumumu göster';
+    }
+    NCZViewer.ui.toast('Konum kapatıldı', 'info', 1800);
+  }
+
+})();
+
+
+// ════════════════════════════════════════════════════════════════
+//  BURADAN SONRA: Modüller ayrı <script> etiketlerinde eklenir
+//
+//  Örnek:
+//
+//  NCZViewer.registerModule({
+//    name: 'points',
+//    init(api) {
+//      api.events.on('file:parsed', ({geometries, layers}) => {
+//        const pts = geometries.filter(g => g.gt === 1);
+//        // noktalari haritaya çiz...
+//      });
+//    }
+//  });
+//
+//  NCZViewer.registerModule({
+//    name: 'parcel-query',
+//    init(api) {
+//      api.ui.addContextItem(`
+//        <div class="ctx-row" onclick="ParcelQuery.query(NCZViewer.getLatlng())">
+//          <svg>...</svg> Parsel Sorgula
+//        </div>
+//      `);
+//    },
+//    onMapClick({latlng}) {
+//      // Sağ tık yapılınca parsel bilgisi getir
+//    }
+//  });
+// ════════════════════════════════════════════════════════════════
+</script>
+
+<!-- ═══ MODÜLLER ═══
+  Her modül hazır olunca yorumu kaldır.
+  Sıra önemli: önce parser, sonra renderer'lar.
+═══════════════════════════════════════════════ -->
+
+<!-- ── Parser Modülleri ── -->
+<script src="modules/parser-v1-points.js"></script>
+<!-- <script src="modules/parser-v1-lines.js"></script> -->
+<!-- <script src="modules/parser-v1-polygons.js"></script> -->
+<!-- <script src="modules/parser-v2.js"></script> -->
+
+<!-- ── Renderer Modülleri ── -->
+<script src="modules/points.js"></script>
+<!-- <script src="modules/lines.js"></script> -->
+<!-- <script src="modules/polygons.js"></script> -->
+
+<!-- ── Export ── -->
+<!-- <script src="modules/export.js"></script> -->
+
+<!-- ── Harici Servisler ── -->
+<!-- <script src="plugins/parcel-query.js"></script> -->
+
+</body>
+</html>
