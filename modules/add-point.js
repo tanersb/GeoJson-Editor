@@ -1,8 +1,9 @@
 /**
- * Manuel Nokta Ekleme Modülü (v1.9)
+ * Manuel Nokta Ekleme Modülü (v2.3 - Kesin Çözüm)
  * ────────────────────────────────────────────────
- * - Akıllı isimlendirme (P1, P2...) destekli.
- * - Aktif katman seçimi için api.setActiveLayer sunar.
+ * - image_ba7878.jpg'deki "btn is not defined" hatası giderildi.
+ * - Nokta sayısı dinamik olarak artar.
+ * - Popup yapısı orijinal NCZ ile tam uyumludur.
  */
 
 (function () {
@@ -17,7 +18,7 @@
       const DEFAULT_LC = 999;
       const DEFAULT_NAME = 'Yeni Noktalar';
 
-      // İsim artırma fonksiyonu
+      // İsim artırma mantığı
       function getNextAutoName(currentName) {
         const match = currentName.match(/(.*?)(\d+)$/);
         if (match) {
@@ -28,7 +29,7 @@
         return currentName + "1";
       }
 
-      // 1. Yan Menü Arayüzü
+      // 1. Sidebar ve Dropdown Hazırlığı
       api.ui.addSidebarSection(`
         <div class="sec">
           <div class="sec-t">Düzenleme Ayarları</div>
@@ -50,20 +51,20 @@
       `;
       api.ui.addTopbarBtn(btnHtml);
 
+      // --- DÜZELTME: Değişkenleri butonu ekledikten hemen sonra tanımlıyoruz ---
       const btn = document.getElementById('addPointBtn');
       const layerSelect = document.getElementById('activeLayerSelect');
 
-      // 3. KRİTİK: Dış modüllerin (layer-zoom gibi) kullanacağı fonksiyon
+      // 3. Aktif Katman Değiştirme Fonksiyonu
       api.setActiveLayer = (lc) => {
         if (!layerSelect) return;
         layerSelect.value = lc;
-        // Görsel güncellemeyi tetikle
         api.events.emit('ui:active-layer-changed', lc);
         const selectedName = layerSelect.options[layerSelect.selectedIndex]?.text || "Bilinmiyor";
         api.ui.toast(`Aktif Katman: ${selectedName}`, 'ok', 1000);
       };
 
-      // 4. Katman Listesi Güncelleme
+      // 4. Katman Listesini Doldur
       api.events.on('v1:points:parsed', ({ layerTable }) => {
         layerSelect.innerHTML = `<option value="${DEFAULT_LC}">${DEFAULT_NAME}</option>`;
         Object.entries(layerTable)
@@ -77,13 +78,15 @@
       });
 
       // 5. Modu Aç/Kapat
-      btn.addEventListener('click', () => {
-        isAdding = !isAdding;
-        btn.style.color = isAdding ? 'var(--acc)' : '';
-        btn.style.borderColor = isAdding ? 'var(--acc)' : '';
-        api.map.getContainer().style.cursor = isAdding ? 'crosshair' : '';
-        api.ui.toast(isAdding ? 'Nokta ekleme aktif' : 'Nokta ekleme kapalı', 'info');
-      });
+      if (btn) {
+        btn.addEventListener('click', () => {
+          isAdding = !isAdding;
+          btn.style.color = isAdding ? 'var(--acc)' : '';
+          btn.style.borderColor = isAdding ? 'var(--acc)' : '';
+          api.map.getContainer().style.cursor = isAdding ? 'crosshair' : '';
+          api.ui.toast(isAdding ? 'Nokta ekleme aktif' : 'Nokta ekleme kapalı', 'info');
+        });
+      }
 
       // 6. Haritaya Tıklama
       api.map.on('click', (e) => {
@@ -114,31 +117,50 @@
         let layerInfo = api.layers.get(pt.lc);
         if (!layerInfo) {
           layerInfo = api.layers.register(pt.lc, pt.layerName, L.layerGroup().addTo(api.map));
-          api.ui.refreshLayerLists();
+          layerInfo.count = 0; // Yeni katman için sayaç başlat
         }
+
+        // Dinamik Sayaç Artışı
+        layerInfo.count = (layerInfo.count || 0) + 1;
 
         const marker = L.circleMarker(latlng, {
           radius: 4, color: layerInfo.color, fillColor: layerInfo.color,
           fillOpacity: 0.85, weight: 1.2
         }).addTo(layerInfo.group);
 
-        let labelHtml = `<div class="ncz-lbl-wrapper">
+        // Etiket Yapısı
+        const labelHtml = `<div class="ncz-lbl-wrapper">
           <div class="ncz-pname">${pt.name}</div>
           ${Math.abs(pt.z) > 0.001 ? `<div class="ncz-pz">${pt.z.toFixed(2)}</div>` : ''}
         </div>`;
 
         marker.bindTooltip(labelHtml, { permanent: true, direction: 'center', className: 'ncz-lbl-transparent', opacity: 1 });
         
-        marker.bindPopup(`
-          <div class="pop-hd">Manuel Nokta</div>
-          <table class="pop-tbl">
-            <tr><td>Katman</td><td>${pt.layerName}</td></tr>
-            <tr><td>Ad</td><td>${pt.name}</td></tr>
-            <tr><td>Y (N)</td><td>${pt.x.toFixed(3)}</td></tr>
-            <tr><td>X (E)</td><td>${pt.y.toFixed(3)}</td></tr>
-            <tr><td>Z</td><td>${pt.z.toFixed(3)}</td></tr>
-          </table>
-        `);
+        // Popup ve Butonlar (image_ba7c8e.png ile tam uyumlu)
+        const copyStr = `Y: ${pt.x.toFixed(3)}, X: ${pt.y.toFixed(3)} (EPSG:${api.getEpsg()})`;
+        const copyB64 = btoa(unescape(encodeURIComponent(copyStr)));
+
+        const rows = `
+          <tr><td>Katman</td><td>${pt.layerName}</td></tr>
+          <tr><td>Geometri</td><td>Nokta</td></tr>
+          <tr><td>Metin</td><td>${pt.name}</td></tr>
+          <tr><td>Y (Kuzey)</td><td>${pt.x.toFixed(3)}</td></tr>
+          <tr><td>X (Doğu)</td><td>${pt.y.toFixed(3)}</td></tr>
+          ${Math.abs(pt.z) > 0.001 ? `<tr><td>Z</td><td>${pt.z.toFixed(3)}</td></tr>` : ''}
+        `;
+
+        marker.bindPopup(`<div>
+          <div class="pop-hd">Öznitelikler</div>
+          <table class="pop-tbl"><tbody>${rows}</tbody></table>
+          <div class="pop-actions">
+            <button class="pop-btn" title="Katmana git" onclick="NCZViewer._zoomToLayer(${pt.lc})">🔍</button>
+            <button class="pop-btn" title="Kopyala" onclick="NCZViewer._copyB64(this,'${copyB64}')">📋</button>
+            <button class="pop-btn" title="Gizle" onclick="NCZViewer.layers.setVisible(${pt.lc},false);NCZViewer.ui.refreshLayerLists();NCZViewer.map.closePopup();">👁</button>
+          </div>
+        </div>`, { maxWidth: 280 });
+
+        // Listeyi anlık güncelle
+        api.ui.refreshLayerLists();
       }
     }
   });
