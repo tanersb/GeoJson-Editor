@@ -71,7 +71,7 @@
     </div>`;
   }
 
-  // Nokta render
+// Nokta render (Z-Destekli)
   function renderPoint(point, epsg, group, api) {
     const wgs = toWGS(point.x, point.y, epsg);
     if (!wgs) return;
@@ -86,12 +86,24 @@
       fillOpacity: 0.85, weight: 1.2, opacity: 0.9,
     });
 
+    // --- ETİKET GÜNCELLEMESİ ---
+    let labelHtml = '';
+    // İsim satırı
     if (point.name) {
-      marker.bindTooltip(point.name, {
+      labelHtml += `<div class="ncz-pname">${point.name}</div>`;
+    }
+    // Kot satırı (Z değeri 0'dan farklıysa ekle)
+    if (point.z !== undefined && Math.abs(point.z) > 0.0001) {
+      labelHtml += `<div class="ncz-pz">${point.z.toFixed(2)}</div>`;
+    }
+
+    if (labelHtml) {
+      marker.bindTooltip(labelHtml, {
         permanent: true, direction: 'top',
         className: 'ncz-lbl', opacity: 1, offset: [0, -6],
       });
     }
+    // ---------------------------
 
     marker.on('click', () => {
       const ll = L.latLng(lat, lon);
