@@ -103,6 +103,18 @@ input,select{font-family:inherit;outline:none}
 .dz-sub{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--mt)}
 .fname{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--acc);margin-top:7px;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
+.ncz-pname {
+  color: var(--tx); /* Beyaz renk */
+  font-weight: 700;
+}
+.ncz-pz {
+  color: var(--warn); /* Sarı/Turuncu renk */
+  font-size: 9px;
+  font-family: 'JetBrains Mono', monospace;
+  margin-top: 1px;
+}
+
+
 /* Select */
 select{
   width:100%;background:var(--s2);border:1.5px solid var(--bd);color:var(--tx);
@@ -1132,6 +1144,8 @@ window.NCZViewer = (function(){
 
 <!-- ── Renderer Modülleri ── -->
 <script src="modules/points.js"></script>
+<script src="modules/label-toggle.js"></script> <!-- Yeni eklenen -->
+<script src="modules/z-toggle.js"></script>
 <!-- <script src="modules/lines.js"></script> -->
 <!-- <script src="modules/polygons.js"></script> -->
 
