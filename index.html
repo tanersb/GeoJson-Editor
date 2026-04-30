@@ -239,15 +239,50 @@ select:focus{border-color:var(--acc2)}
 }
 .pop-btn:hover{background:var(--s3);border-color:var(--bd2);color:var(--tx)}
 
-/* NCZ labels */
-.ncz-lbl{
-  background:transparent!important;border:none!important;box-shadow:none!important;
-  padding:0!important;font-family:'JetBrains Mono',monospace;
-  font-size:10px;font-weight:700;color:var(--tx);
-  text-shadow:0 0 4px var(--bg),0 0 4px var(--bg),0 0 4px var(--bg);white-space:nowrap;
+/* Leaflet Tooltip arkaplanını tamamen saydam ve tıklanamaz yapıyoruz */
+.ncz-lbl-transparent {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  pointer-events: none;
 }
-.ncz-lbl::before{display:none!important}
+.ncz-lbl-transparent::before { display: none !important; }
 
+/* Kapsayıcının boyutu 0'a 0 olacak, böylece noktanın tam ortasında kalacak */
+.ncz-lbl-wrapper {
+  position: relative;
+  width: 0;
+  height: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+/* Nokta İsmi (Yukarı iter) */
+.ncz-pname {
+  position: absolute;
+  bottom: 6px; /* Noktanın merkezinden ne kadar yukarıda olacağı */
+  color: var(--tx);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  font-weight: 700;
+  text-shadow: 0 0 4px var(--bg), 0 0 4px var(--bg);
+  white-space: nowrap;
+}
+
+/* Nokta Kotu (Aşağı iter) */
+.ncz-pz {
+  position: absolute;
+  top: 6px; /* Noktanın merkezinden ne kadar aşağıda olacağı */
+  color: var(--warn); /* Sarı/Turuncu dikkat çekici renk */
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  font-weight: 600;
+  text-shadow: 0 0 4px var(--bg), 0 0 4px var(--bg);
+  white-space: nowrap;
+}
+}
 /* ── LEAFLET OVERRIDES ── */
 .leaflet-bar a{background:var(--s1)!important;color:var(--tx)!important;border-color:var(--bd)!important}
 
