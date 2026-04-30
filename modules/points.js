@@ -82,28 +82,29 @@
     _bounds[point.lc].push([lat, lon]);
 
     const marker = L.circleMarker([lat, lon], {
-      radius: 5, color: col, fillColor: col,
+      radius: 4, color: col, fillColor: col,
       fillOpacity: 0.85, weight: 1.2, opacity: 0.9,
     });
 
-    // --- ETİKET GÜNCELLEMESİ ---
-    let labelHtml = '';
-    // İsim satırı
+    // --- ETİKET GÜNCELLEMESİ (Merkez Kapsayıcı) ---
+    let labelHtml = '<div class="ncz-lbl-wrapper">';
     if (point.name) {
       labelHtml += `<div class="ncz-pname">${point.name}</div>`;
     }
-    // Kot satırı (Z değeri 0'dan farklıysa ekle)
     if (point.z !== undefined && Math.abs(point.z) > 0.0001) {
       labelHtml += `<div class="ncz-pz">${point.z.toFixed(2)}</div>`;
     }
+    labelHtml += '</div>';
 
-    if (labelHtml) {
+    if (point.name || (point.z !== undefined && Math.abs(point.z) > 0.0001)) {
       marker.bindTooltip(labelHtml, {
-        permanent: true, direction: 'top',
-        className: 'ncz-lbl', opacity: 1, offset: [0, -6],
+        permanent: true, 
+        direction: 'center', // Etiketi noktanın tam ortasına koy
+        className: 'ncz-lbl-transparent', // Leaflet'in varsayılan arkaplanını sil
+        opacity: 1 
       });
     }
-    // ---------------------------
+    // ----------------------------------------------
 
     marker.on('click', () => {
       const ll = L.latLng(lat, lon);
