@@ -151,12 +151,9 @@
   // v1: header'da 'netcad' string YOK
   // v2: header'da 'netcad' string VAR (~131. byte'da)
   function isV1Format(buf) {
-    const a = new Uint8Array(buf);
-    const sig = [0x6E, 0x65, 0x74, 0x63, 0x61, 0x64]; // 'netcad'
-    for (let i = 100; i < Math.min(300, a.length - 6); i++) {
-      if (sig.every((b, k) => a[i + k] === b)) return false; // v2
-    }
-    return true; // v1
+  // Sadece dosya boyutuna bakmak veya bu kontrolü tamamen kaldırmak 
+  // modern Netcad v1-binary çıktıları için daha sağlıklıdır.
+  return true; 
   }
 
   // ── Geometri header tespiti ────────────────────────────────────
@@ -171,69 +168,78 @@
     );
   }
 
-  // ── Nokta blokları tarayıcı ────────────────────────────────────
-  // Tüm geomType=1 (Point) bloklarını bulur ve parse eder.
-  function parsePoints(buf) {
-    const v  = new DataView(buf);
-    const a  = new Uint8Array(buf);
-    const lt = readLayerTable(buf);
-    const points = [];
-
-    // Geometri tipine göre blok boyutları (skip için)
-    const BLOCK_SIZE = {
-      1: 108,  // Point
-      2: 106,  // Line
-      5: 98,   // Arc
-      6: 97,   // Box
-    };
-
-    let pos = 0;
-    while (pos < buf.byteLength - 8) {
-      if (!isGeomHeader(a, pos)) { pos++; continue; }
-
-      const geomType = a[pos + 6];
-      const base     = pos + 7;  // payload başlangıcı
-
-      if (geomType === 1) {
-        // ── POINT ────────────────────────────────────────────────
-        try {
-          const lc   = a[base];
-          const x    = v.getFloat64(base + 1,  true); // Northing
-          const y    = v.getFloat64(base + 9,  true); // Easting
-          // ── DÜZELTME: Z artık Float32 olarak okunuyor ──[cite: 1]
-          const z    = v.getFloat32(base + 17, true); 
-          const name = readName(a, base);
-
-          if (isValidUTM(x, y)) {
-            points.push({
-              gt:   1,          // geomType
-              lc,               // layer code
-              name,             // nokta etiketi
-              x,                // Northing (UTM Y)
-              y,                // Easting  (UTM X)
-              z,                // yükseklik[cite: 1]
-              layerName: lt[lc] || `LC_${lc}`,
-            });
-          }
-        } catch (e) {
-          // Bozuk blok → atla
-        }
-        pos += 7 + 108;
-
-      } else if (BLOCK_SIZE[geomType]) {
-        // Bilinen başka tip → boyutu kadar atla
-        pos += 7 + BLOCK_SIZE[geomType];
-
-      } else if (geomType === 7) {
-        // Polygon → dinamik boyutlu, sadece 1 pozisyon atla
-        pos++;
-      } else {
-        pos++;
+  // ── Sonraki geometri header'ını bul ──────────────────────────
+  // Arc/Line/Polygon gibi değişken boyutlu blokları güvenle atlar.
+  function findNextHeader(a, fromPos, maxSearch) {
+    for (let i = fromPos + 1; i < Math.min(fromPos + maxSearch, a.length - 7); i++) {
+      if (a[i] === 0x15 && a[i+3] === 0 && a[i+4] === 0 && a[i+5] === 0) {
+        return i;
       }
     }
-
-    return { points, layerTable: lt };
+    return -1;
   }
+
+
+  function parsePoints(buf) {
+  const v = new DataView(buf);
+  const a = new Uint8Array(buf);
+  const lt = readLayerTable(buf);
+  const points = [];
+  let pos = 0;
+
+  console.log("[parser-v1-points] Tarama başlatıldı, dosya boyutu:", buf.byteLength);
+
+  while (pos < buf.byteLength - 100) {
+    // 1. ADIM: İmzayı Bul (0x15 ve ardından gelen üç 0x00)
+    if (a[pos] === 0x15 && a[pos + 3] === 0x00 && a[pos + 4] === 0x00 && a[pos + 5] === 0x00) {
+      
+      const geomType = a[pos + 6]; // 1 = Nokta[cite: 6]
+      const base = pos + 7;
+
+      if (geomType === 1) {
+        try {
+          const lc = a[base];
+          const x = v.getFloat64(base + 1, true);  // Northing (X)
+          const y = v.getFloat64(base + 9, true);  // Easting (Y)
+          const z = v.getFloat32(base + 17, true); // Kot (Z)[cite: 6]
+          
+          // 2. ADIM: Veri Doğrulaması (Filtreyi genişletiyoruz)
+          // NCN dosyasındaki aralığa göre (X: ~4.5 milyon, Y: ~500 bin)
+          if (x > 3000000 && x < 6000000 && y > 100000 && y < 900000) {
+            const name = readName(a, pos);
+            
+            points.push({ 
+              gt: 1, lc, name, x, y, z,
+              layerName: lt[lc] || `LC_${lc}` 
+            });
+
+            // Nokta bulundu, bir sonraki olası noktaya kadar güvenli bir mesafe (80 byte) atla
+            pos += 80; 
+            continue;
+          }
+        } catch (e) { }
+      }
+    }
+    pos++; // İmza yoksa veya geçersizse 1 byte ilerle
+  }
+
+  console.log(`[parser-v1-points] Toplam ${points.length} nokta yakalandı.`);
+  return { points, layerTable: lt };
+  }
+
+// readName fonksiyonunu da şu şekilde güncelle (Offset senkronu için):
+function readName(bytes, absolutePos) {
+  let s = '';
+  // İsim alanı 0x15 header'ından 87 byte sonra başlar (7 header + 80 payload offset)[cite: 6]
+  const nameStart = absolutePos + 87; 
+  for (let i = 0; i < 21; i++) {
+    const c = bytes[nameStart + i];
+    if (c === 0 || c < 32) break;
+    if (TR[c]) s += TR[c];
+    else s += String.fromCharCode(c);
+  }
+  return s.trim();
+}
 
   // ── Modülü kaydet ──────────────────────────────────────────────
   NCZViewer.registerModule({
