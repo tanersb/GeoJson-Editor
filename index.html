@@ -422,7 +422,7 @@ select:focus{border-color:var(--acc2)}
   </button>
   <div class="brand">
     <div class="brand-name">Online NCZ Viewer</div>
-	<div class="brand-sub">GIS · NCZ · KML / CSV <span class="ver-badge" id="ver-badge">v1.0.3</span></div>
+	<div class="brand-sub">GIS · NCZ · KML / CSV <span class="ver-badge" id="ver-badge">v1.0.5</span></div>
   </div>
   <div class="topstats" id="topStats" style="display:none">
     <div class="tst"><span class="tst-val" id="ts-g" style="color:var(--acc)">—</span><span class="tst-lbl">Geometri</span></div>
@@ -853,8 +853,12 @@ window.NCZViewer = (function(){
   $('hide-d').addEventListener('click',()=>{ layers.all().forEach(([lc])=>layers.setVisible(lc,false)); refreshLayerLists(); });
   $('clear-d').addEventListener('click',()=>{
     if(!confirm('Tüm veriler silinecek?'))return;
+    map.closePopup();
     layers.clear(); refreshLayerLists(); hideLayerUI();
+    _buf = null;
+    ['fi-d','fi-m','hdrFile'].forEach(id=>{ const el=$(id); if(el) el.value=''; });
     events.emit('data:cleared',{});
+    toast('Temizlendi','ok',1200);
   });
   ['show-m','hide-m'].forEach((id,i)=>$(id)?.addEventListener('click',()=>{
     layers.all().forEach(([lc])=>layers.setVisible(lc,i===0)); refreshLayerLists();
