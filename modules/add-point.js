@@ -88,6 +88,20 @@
         });
       }
 
+      // data:cleared → ekleme modunu kapat, sayacı sıfırla
+      api.events.on('data:cleared', () => {
+        if (isAdding) {
+          isAdding = false;
+          if (btn) {
+            btn.style.color = '';
+            btn.style.borderColor = '';
+          }
+          api.map.getContainer().style.cursor = '';
+        }
+        nextPointName = 'P1';
+        layerSelect.innerHTML = `<option value="${DEFAULT_LC}">${DEFAULT_NAME}</option>`;
+      });
+
       // 6. Haritaya Tıklama
       api.map.on('click', (e) => {
         if (!isAdding) return;
