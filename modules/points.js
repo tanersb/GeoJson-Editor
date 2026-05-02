@@ -39,9 +39,13 @@
 
     const rows = [
       ['Katman',   point.layerName],
-      ['Geometri', 'Nokta'],
+      ['Geometri', point.isText ? 'Yazı' : 'Nokta'],
     ];
-    if (point.name) rows.push(['Metin', point.name]);
+    if (point.name) rows.push([point.isText ? 'Metin' : 'İsim', point.name]);
+    if (point.isText && point.angleDeg && Math.abs(point.angleDeg) > 0.1)
+      rows.push(['Dönüş', `${point.angleDeg.toFixed(1)}°`]);
+    if (point.isText && point.textHeight && point.textHeight > 0)
+      rows.push(['Yükseklik', point.textHeight.toFixed(2)]);
     if (utm) {
       rows.push(
         ['Y (Kuzey)', utm.N.toFixed(3)],
@@ -81,17 +85,19 @@
     if (!_bounds[point.lc]) _bounds[point.lc] = [];
     _bounds[point.lc].push([lat, lon]);
 
-    // gt=5 TEXT etiketleri Netcad'de nokta numarası / kot etiketi gibi görünür.
-    // Bu etiketleri ekstra nokta dairesi çizmeden, hafif yazı olarak gösteriyoruz.
-    if (point.isTextLabel) {
-      const label = (point.name || '').replace(/[<>&]/g, ch => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[ch]));
+    // gt=5 TEXT geometrisi — Netcad yazı objesi
+    if (point.isText) {
+      const esc = (point.name || '').replace(/[<>&"]/g, ch =>
+        ({ '<':'&lt;', '>':'&gt;', '&':'&amp;', '"':'&quot;' }[ch]));
+      const rot = point.angleDeg ? `rotate(${(-point.angleDeg).toFixed(1)}deg)` : '';
+      const fsize = Math.max(10, Math.min(18, (point.textHeight || 3) * 0.8));
       const marker = L.marker([lat, lon], {
         interactive: true,
         icon: L.divIcon({
-          className: 'ncz-text-label-icon',
-          html: `<div class="ncz-text-label" style="color:${col}">${label}</div>`,
-          iconSize: [1, 1],
-          iconAnchor: [0, 0]
+          className: 'ncz-text-obj-icon',
+          html: `<div class="ncz-text-obj" style="color:${col};transform:${rot};font-size:${fsize}px">${esc}</div>`,
+          iconSize: [0, 0],
+          iconAnchor: [0, 0],
         })
       });
       marker.on('click', () => {
@@ -166,7 +172,24 @@
   // Modül kaydı
   NCZViewer.registerModule({
     name: 'points-renderer',
-    init(api) { console.log('[points-renderer] Yüklendi'); },
+    init(api) {
+      console.log('[points-renderer] Yüklendi');
+      // Text nesneleri için CSS
+      const style = document.createElement('style');
+      style.innerHTML = `
+        .ncz-text-obj-icon { overflow: visible; }
+        .ncz-text-obj {
+          white-space: nowrap;
+          font-family: 'JetBrains Mono', monospace;
+          font-weight: 600;
+          line-height: 1;
+          pointer-events: auto;
+          text-shadow: 0 0 3px rgba(0,0,0,0.8), 0 0 6px rgba(0,0,0,0.6);
+          transform-origin: left bottom;
+        }
+      `;
+      document.head.appendChild(style);
+    },
     onDataCleared() { Object.keys(_bounds).forEach(k => delete _bounds[k]); },
   });
 
@@ -202,6 +225,9 @@
         );
         api.ui.showLayerUI();
         api.ui.refreshLayerLists();
+
+        const allPts = Object.values(_bounds).flat();
+        if (allPts.length > 0) api.map.fitBounds(L.latLngBounds(allPts).pad(0.08));
 
         api.ui.toast(`✓ ${total.toLocaleString('tr')} nokta yüklendi`, 'ok', 2500);
         console.log(`[points-renderer] Toplam ${total} nokta`);

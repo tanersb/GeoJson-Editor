@@ -180,33 +180,65 @@
   }
 
 
-  function readTextPayload(bytes, pos, totalLen) {
-    // gt=5 TEXT kayıtlarında text genellikle blok başlangıcından +96'da uzunluk,
-    // +97'de içerik olarak durur. Kısa nokta etiketlerini yakalamak için kullanılır.
-    const lenPos = pos + 96;
-    if (lenPos >= bytes.length) return '';
-    const declared = bytes[lenPos];
-    if (declared < 1 || declared > 48) return '';
-    const textStart = pos + 97;
-    if (textStart + declared > pos + totalLen || textStart >= bytes.length) return '';
-    let out = '';
-    for (let i = 0; i < declared; i++) {
-      const c = bytes[textStart + i];
-      if (c === 0) break;
-      if (TR[c]) out += TR[c];
-      else if (c >= 32 && c < 127) out += String.fromCharCode(c);
-      else break;
+  // ── gt=5 Text parser (v1 + v2 format desteği) ─────────────────
+  // Layout: base+0=lc, base+1=N(f64), base+9=E(f64), base+17=Z(f32), base+21=W(f32)
+  //         base+25=Cls(pascal), +oname(pascal)
+  //         sub_start = base+25+1+cls_len+1+oname_len
+  //         Text sub (v1): Sct(4)+AngleT(4)+Just(1)+GFlags(1)+Tref(1)+S(pascal) → S@sub+11
+  //         Text sub (v2): aynı prefix + 52 byte ek alan → S@sub+63
+  function parseTextRecord(v, a, pos, lt) {
+    const base = pos + 7;
+    const lc = a[base];
+    const N  = v.getFloat64(base + 1,  true);
+    const E  = v.getFloat64(base + 9,  true);
+    const Z  = v.getFloat32(base + 17, true);
+    const W  = v.getFloat32(base + 21, true);
+
+    if (!isValidUTM(N, E)) return null;
+
+    const clsLen   = a[base + 25] || 0;
+    const onameLen = a[base + 26 + clsLen] || 0;
+    const sub      = base + 25 + 1 + clsLen + 1 + onameLen;
+    if (sub + 12 >= a.length) return null;
+
+    const angleT = v.getFloat32(sub + 4, true);
+
+    // v1: S_len @ sub+11 / v2: S_len @ sub+63 — hangisi geçerliyse onu kullan
+    let sLen = 0, sStart = 0;
+    const sLen11 = a[sub + 11];
+    if (sLen11 > 0 && sLen11 <= 250 && sub + 12 + sLen11 <= a.length) {
+      sLen = sLen11; sStart = sub + 12;       // v1
+    } else {
+      const sLen63 = (sub + 63 < a.length) ? a[sub + 63] : 0;
+      if (sLen63 > 0 && sLen63 <= 250 && sub + 64 + sLen63 <= a.length) {
+        sLen = sLen63; sStart = sub + 64;     // v2
+      }
     }
-    return out.trim();
+    if (sLen === 0) return null;
+
+    let text = '';
+    for (let i = 0; i < sLen; i++) {
+      const ch = a[sStart + i];
+      if (ch === 0) break;
+      if (TR[ch]) text += TR[ch];
+      else if (ch >= 32 && ch < 127) text += String.fromCharCode(ch);
+    }
+    text = text.trim();
+    if (!text) return null;
+
+    return {
+      gt: 5, lc,
+      layerName: lt[lc] || `LC_${lc}`,
+      x: N, y: E, z: Z,
+      textHeight: W,
+      angleRad: angleT,
+      angleDeg: angleT * (180 / Math.PI),
+      name: text,
+      isText: true,
+    };
   }
 
-  function isPointLikeLabel(txt) {
-    if (!txt) return false;
-    const t = txt.trim();
-    if (t.length < 1 || t.length > 12) return false;
-    // Pafta başlıkları / uzun notlar değil; nokta no, parsel no, G1, RS101 gibi kısa etiketler.
-    return /^[A-Za-zÇĞİÖŞÜçğıöşü0-9_\-.\/]+$/.test(t);
-  }
+
 
   function pointKey(x, y, name, gt) {
     return `${gt}|${name || ''}|${Math.round(x * 1000)}|${Math.round(y * 1000)}`;
@@ -251,23 +283,15 @@
           continue;
         }
 
-        // Bazı Netcad projelerinde ekranda nokta gibi görünen değerler gt=5 TEXT objesi olarak saklanır.
-        // Bunları sadece kısa nokta etiketi ise ekliyoruz; uzun pafta başlıklarını almıyoruz.
+        // gt=5: Text geometrisi — binary analiz ile doğrulanmış parser
         if (geomType === 5) {
           try {
-            const lc = a[base];
-            const x = v.getFloat64(pos + 8, true);
-            const y = v.getFloat64(pos + 16, true);
-            const text = readTextPayload(a, pos, safeLen);
-            if (isValidUTM(x, y) && isPointLikeLabel(text)) {
-              const key = pointKey(x, y, text, 5);
+            const txt = parseTextRecord(v, a, pos, lt);
+            if (txt) {
+              const key = pointKey(txt.x, txt.y, txt.name, 5);
               if (!seen.has(key)) {
                 seen.add(key);
-                points.push({
-                  gt: 5, lc, name: text, x, y, z: 0,
-                  isTextLabel: true,
-                  layerName: lt[lc] || `LC_${lc}`
-                });
+                points.push(txt);
               }
             }
           } catch (e) { }
@@ -307,7 +331,7 @@
           const { points, layerTable } = parsePoints(buf);
 
           if (points.length === 0) {
-            console.warn('[parser-v1-points] Nokta geometrisi bulunamadı');
+            console.warn('[parser-v1-points] Nokta/Yazı geometrisi bulunamadı');
             NCZViewer.ui.loading(false);
             return;
           }
@@ -341,7 +365,8 @@
     readName,
     isValidUTM,
     isGeomHeader,
-    BLOCK_SIZE: { 1: 109, 2: 106, 5: 101, 6: 97, 7: "variable" },
+    parseTextRecord,
+    BLOCK_SIZE: { 1: 109, 2: 106, 5: 'variable', 6: 97, 7: 'variable' },
   };
 
   console.log('[parser-v1-points] Modül hazır');
