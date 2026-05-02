@@ -201,17 +201,23 @@
     const sub      = base + 25 + 1 + clsLen + 1 + onameLen;
     if (sub + 12 >= a.length) return null;
 
-    const angleT = v.getFloat32(sub + 4, true);
+    // v1: S_len@sub+11, AngleT@sub+4
+    // v2: S_len@sub+63, AngleT@sub+56
+    let sLen = 0, sStart = 0, angleT = 0;
 
-    // v1: S_len @ sub+11 / v2: S_len @ sub+63 — hangisi geçerliyse onu kullan
-    let sLen = 0, sStart = 0;
     const sLen11 = a[sub + 11];
     if (sLen11 > 0 && sLen11 <= 250 && sub + 12 + sLen11 <= a.length) {
-      sLen = sLen11; sStart = sub + 12;       // v1
+      // v1 format
+      sLen   = sLen11;
+      sStart = sub + 12;
+      angleT = v.getFloat32(sub + 4, true);
     } else {
+      // v2 format
       const sLen63 = (sub + 63 < a.length) ? a[sub + 63] : 0;
       if (sLen63 > 0 && sLen63 <= 250 && sub + 64 + sLen63 <= a.length) {
-        sLen = sLen63; sStart = sub + 64;     // v2
+        sLen   = sLen63;
+        sStart = sub + 64;
+        angleT = (sub + 60 < a.length) ? v.getFloat32(sub + 56, true) : 0;
       }
     }
     if (sLen === 0) return null;

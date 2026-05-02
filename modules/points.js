@@ -43,7 +43,7 @@
     ];
     if (point.name) rows.push([point.isText ? 'Metin' : 'İsim', point.name]);
     if (point.isText && point.angleDeg && Math.abs(point.angleDeg) > 0.1)
-      rows.push(['Dönüş', `${point.angleDeg.toFixed(1)}°`]);
+      rows.push(['Dönüş', `${point.angleDeg.toFixed(1)}° (${point.angleRad.toFixed(4)} rad)`]);
     if (point.isText && point.textHeight && point.textHeight > 0)
       rows.push(['Yükseklik', point.textHeight.toFixed(2)]);
     if (utm) {
@@ -89,8 +89,9 @@
     if (point.isText) {
       const esc = (point.name || '').replace(/[<>&"]/g, ch =>
         ({ '<':'&lt;', '>':'&gt;', '&':'&amp;', '"':'&quot;' }[ch]));
+      // Netcad açısı: matematik CCW radyan → CSS rotate: CW derece → negatife çevir
       const rot = point.angleDeg ? `rotate(${(-point.angleDeg).toFixed(1)}deg)` : '';
-      const fsize = Math.max(10, Math.min(18, (point.textHeight || 3) * 0.8));
+      const fsize = Math.max(9, Math.min(16, (point.textHeight || 3) * 0.8));
       const marker = L.marker([lat, lon], {
         interactive: true,
         icon: L.divIcon({
