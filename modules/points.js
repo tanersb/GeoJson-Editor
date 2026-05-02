@@ -203,9 +203,6 @@
         api.ui.showLayerUI();
         api.ui.refreshLayerLists();
 
-        const allPts = Object.values(_bounds).flat();
-        if (allPts.length > 0) api.map.fitBounds(L.latLngBounds(allPts).pad(0.08));
-
         api.ui.toast(`✓ ${total.toLocaleString('tr')} nokta yüklendi`, 'ok', 2500);
         console.log(`[points-renderer] Toplam ${total} nokta`);
       } catch (err) {
