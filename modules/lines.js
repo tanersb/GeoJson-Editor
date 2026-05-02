@@ -1,29 +1,25 @@
 /**
- * NCZ v1 Lines Renderer  v2.2 — kontrollü nokta/çizgi tamamlayıcı
+ * NCZ v1 Lines Renderer  v2.3 — kontrollü nokta/çizgi/daire tamamlayıcı
  * ───────────────────────────────────────────────────────────────
  * Bu sürüm gönderilen mevcut viewer yapısını bozmaz; sadece bazı projelerde
- * eksik kalan gerçek çizgi/polyline geometrilerini kontrollü şekilde ekler.
- *
+ * eksik kalan gerçek çizgi/polyline/daire geometrilerini kontrollü şekilde ekler.
+ * 
  * Okunan geometri tipleri:
  *   gt=2  : gerçek çizgi segmenti
- *   gt=4  : kısa ark/yardımcı segment (mevcut destek korunur)
- *   gt=7  : polyline; vertex listesi offset +113'ten, 24 byte adımla okunur
+ *   gt=3  : DAİRE (CIRCLE) - YENİ EKLENDİ[cite: 10]
+ *   gt=4  : kısa ark/yardımcı segment
+ *   gt=7  : polyline; vertex listesi offset +113'ten, 24 byte adımla okunur[cite: 10]
  *   gt=10 : kutu/çerçeve; bbox köşelerinden dikdörtgen oluşturulur
- *
- * Özellikle yapılmayan şey:
- *   gt=5 TEXT objeleri çizgi gibi yorumlanmaz. Bunlar parser-v1-points.js
- *   içinde kısa nokta etiketi olarak ayrıca gösterilir.
  */
 
 (function () {
   'use strict';
 
-  // Türkçe karakter tablosu
+  // Türkçe karakter tablosu[cite: 10]
   const TR = {
     253:'ı', 240:'ğ', 254:'ş', 221:'İ', 208:'Ğ', 222:'Ş',
     246:'ö', 214:'Ö', 252:'ü', 220:'Ü', 231:'ç', 199:'Ç',
   };
-  // readPLineSub'ın erişebilmesi için global'e aç
   window._NCZ_TR = TR;
 
   function toWGS(n, e, epsg) {
@@ -75,15 +71,10 @@
     return { type: gt === 2 ? 'Çizgi' : 'Ark', gt, lc, layerName: lt[lc] || `LC_${lc}`, z1, coords: [[n1, e1], [n2, e2]] };
   }
 
-  // ── PLine sub struct okuyucu ─────────────────────────────────
-  // sub = base+25+1+cls_len+1+oname_len (cls=0, oname=0 → sub=base+27)
-  // PLine.Read: PolyName(pascal) + PFlags(int32) + TArea(double)
-  // PFlags: bit1=Closed(2), bit2=Filled(4)
   function readPLineSub(a, v, base) {
     const clsLen   = a[base + 25] || 0;
     const onameLen = a[base + 26 + clsLen] || 0;
     let p = base + 25 + 1 + clsLen + 1 + onameLen;
-    // PolyName (pascal string)
     const pnLen = a[p] || 0; p++;
     let polyName = '';
     const TR = window._NCZ_TR || {};
@@ -96,6 +87,26 @@
     const pflags = v.getInt32(p, true); p += 4;
     const tarea  = v.getFloat64(p, true);
     return { polyName: polyName.trim(), pflags, tarea };
+  }
+
+  // ── gt=3 Circle okuyucu ──────────────────────────────────────────[cite: 10]
+  function parseCircle(v, a, pos, lt) {
+    const base = pos + 7;
+    const lc   = a[base];
+    const N    = v.getFloat64(base + 1,  true);
+    const E    = v.getFloat64(base + 9,  true);
+    const Z    = v.getFloat32(base + 17, true);
+    if (!isValidUTM(N, E)) return null;
+
+    const clsLen   = a[base + 25] || 0;
+    const onameLen = a[base + 26 + clsLen] || 0;
+    const sub      = base + 25 + 1 + clsLen + 1 + onameLen;
+
+    if (sub + 8 > v.buffer.byteLength) return null;
+    const rad = v.getFloat64(sub, true);
+    if (!Number.isFinite(rad) || rad <= 0 || rad > 100000) return null;
+
+    return { type: 'Daire', gt: 3, lc, layerName: lt[lc] || `LC_${lc}`, N, E, Z, rad };
   }
 
   function parsePolyline(v, a, pos, len, lt) {
@@ -119,11 +130,7 @@
     }
     if (coords.length < 2) return null;
 
-    // PLine sub struct: PolyName, PFlags, TArea
     const sub = readPLineSub(a, v, base);
-
-    // IsClosed: sadece geometrik kapanış (ilk≈son vertex).
-    // PFlags.Closed güvenilir değil — bu dosyalarda tüm PLine'larda set edilmiş.
     const first = coords[0], last2 = coords[coords.length - 1];
     const isClosed = coords.length >= 3 &&
       Math.abs(first[0] - last2[0]) < 0.01 &&
@@ -143,46 +150,76 @@
     };
   }
 
-  function parseBox(v, a, pos, len, lt) {
+  function parseRectangle(v, a, pos, lt) {
     const base = pos + 7;
-    const lc = a[base];
-    const validPairs = [];
-    for (let off = pos + 7; off <= pos + len - 16; off++) {
-      const n = v.getFloat64(off, true);
-      const e = v.getFloat64(off + 8, true);
-      if (isValidUTM(n, e)) validPairs.push([n, e]);
+    const lc   = a[base];
+    const N1   = v.getFloat64(base + 1,  true);
+    const E1   = v.getFloat64(base + 9,  true);
+    if (!isValidUTM(N1, E1)) return null;
+
+    const clsLen   = a[base + 25] || 0;
+    const onameLen = a[base + 26 + clsLen] || 0;
+    const sub      = base + 25 + 1 + clsLen + 1 + onameLen;
+
+    let PA_N, PA_E, angleB = 0;
+    const nameLen = a[sub] || 0;
+    const pV1     = sub + 1 + nameLen;
+    const paN_v1  = (pV1 + 8 <= v.buffer.byteLength) ? v.getFloat64(pV1, true) : 0;
+    const paE_v1  = (pV1 + 16 <= v.buffer.byteLength) ? v.getFloat64(pV1 + 8, true) : 0;
+
+    if (isValidUTM(paN_v1, paE_v1)) {
+      PA_N   = paN_v1;
+      PA_E   = paE_v1;
+      angleB = (pV1 + 20 <= v.buffer.byteLength) ? v.getFloat32(pV1 + 16, true) : 0;
+    } else {
+      const paN_v2 = (sub + 40 <= v.buffer.byteLength) ? v.getFloat64(sub + 32, true) : 0;
+      const paE_v2 = (sub + 48 <= v.buffer.byteLength) ? v.getFloat64(sub + 40, true) : 0;
+      if (!isValidUTM(paN_v2, paE_v2)) return null;
+      PA_N   = paN_v2;
+      PA_E   = paE_v2;
+      angleB = (sub + 52 <= v.buffer.byteLength) ? v.getFloat32(sub + 48, true) : 0;
     }
-    if (validPairs.length < 2) return null;
-    const ns = validPairs.map(p => p[0]);
-    const es = validPairs.map(p => p[1]);
-    const minN = Math.min(...ns), maxN = Math.max(...ns);
-    const minE = Math.min(...es), maxE = Math.max(...es);
-    if (Math.abs(maxN - minN) < 0.001 || Math.abs(maxE - minE) < 0.001) return null;
-    const coords = [[minN, minE], [minN, maxE], [maxN, maxE], [maxN, minE], [minN, minE]];
-    return { type: 'Kutu/Çerçeve', gt: 10, lc, layerName: lt[lc] || `LC_${lc}`, coords };
+
+    const width  = Math.abs(E1 - PA_E);
+    const height = Math.abs(N1 - PA_N);
+    if (width < 0.001 || height < 0.001) return null;
+
+    const coords = [
+      [N1,   E1],
+      [N1,   PA_E],
+      [PA_N, PA_E],
+      [PA_N, E1],
+      [N1,   E1],
+    ];
+
+    return {
+      type: 'Dikdörtgen', gt: 10, lc,
+      layerName: lt[lc] || `LC_${lc}`,
+      coords,
+      width, height,
+      angleB,
+      isClosed: true,
+      isFilled: false,
+    };
   }
 
   function makePopup(obj, epsg) {
-    const first = obj.coords[0];
-    const copyStr = `Y: ${first[0].toFixed(3)}, X: ${first[1].toFixed(3)} (EPSG:${epsg})`;
+    // Daire veya koordinatlı objeler için güvenli koordinat alımı[cite: 10]
+    const yVal = obj.gt === 3 ? obj.N : (obj.coords ? obj.coords[0][0] : 0);
+    const xVal = obj.gt === 3 ? obj.E : (obj.coords ? obj.coords[0][1] : 0);
+    
+    const copyStr = `Y: ${yVal.toFixed(3)}, X: ${xVal.toFixed(3)} (EPSG:${epsg})`;
     const copyB64 = btoa(unescape(encodeURIComponent(copyStr)));
 
     const rows = [['Katman', obj.layerName], ['Geometri', obj.type]];
-    if (obj.gt === 7) {
+    if (obj.gt === 10 && obj.width) {
+      rows.push(['Genişlik', `${obj.width.toFixed(3)} m`], ['Yükseklik', `${obj.height.toFixed(3)} m`], ['Alan', `${(obj.width * obj.height).toFixed(2)} m²`]);
+    } else if (obj.gt === 3) {
+      rows.push(['Merkez Y', obj.N.toFixed(3)], ['Merkez X', obj.E.toFixed(3)], ['Yarıçap', `${obj.rad.toFixed(3)} m`], ['Alan', `${(Math.PI * obj.rad * obj.rad).toFixed(2)} m²`]);
+    } else if (obj.gt === 7) {
       if (obj.polyName) rows.push(['Ad', obj.polyName]);
-      rows.push(['Kapalı', obj.isClosed ? 'Evet' : 'Hayır']);
-      rows.push(['Vertex', String(obj.coords.length)]);
-      if (obj.tarea && Math.abs(obj.tarea) > 0.001)
-        rows.push(['Alan', `${obj.tarea.toFixed(2)} m²`]);
-    } else {
-      const last = obj.coords[obj.coords.length - 1];
-      rows.push(
-        ['Vertex',   String(obj.coords.length)],
-        ['Y başl.',  first[0].toFixed(3)],
-        ['X başl.',  first[1].toFixed(3)],
-        ['Y son',    last[0].toFixed(3)],
-        ['X son',    last[1].toFixed(3)],
-      );
+      rows.push(['Kapalı', obj.isClosed ? 'Evet' : 'Hayır'], ['Vertex', String(obj.coords.length)]);
+      if (obj.tarea && Math.abs(obj.tarea) > 0.001) rows.push(['Alan', `${obj.tarea.toFixed(2)} m²`]);
     }
 
     const tbl = rows.map(r => `<tr><td>${r[0]}</td><td>${r[1]}</td></tr>`).join('');
@@ -192,7 +229,6 @@
       <div class="pop-actions">
         <button class="pop-btn" title="Tüm katmanı göster" onclick="NCZViewer._zoomToLayer(${obj.lc})">🔍</button>
         <button class="pop-btn" title="Y/X kopyala" onclick="NCZViewer._copyB64(this,'${copyB64}')">📋</button>
-        <button class="pop-btn" title="Katmanı gizle" onclick="NCZViewer.layers.setVisible(${obj.lc},false);NCZViewer.ui.refreshLayerLists();NCZViewer.map.closePopup();">👁</button>
       </div>
     </div>`;
   }
@@ -202,24 +238,45 @@
   function renderObject(obj, epsg, api, groups) {
     const layerInfo = layerInfoFor(api, groups, obj.lc, obj.layerName);
     const col = layerInfo.color;
+
+    // --- DAİRE ÇİZİMİ (gt=3) ---[cite: 10]
+    if (obj.gt === 3) {
+      const ll = toWGS(obj.N, obj.E, epsg);
+      if (!ll) return false;
+      if (!_bounds[obj.lc]) _bounds[obj.lc] = [];
+      _bounds[obj.lc].push(ll);
+      const circle = L.circle(ll, {
+        radius:      obj.rad,
+        color:       col,
+        weight:      2,
+        opacity:     0.9,
+        fillColor:   col,
+        fillOpacity: 0.12,
+      });
+      circle.on('click', ev => {
+        L.popup({ maxWidth: 300 }).setLatLng(ev.latlng).setContent(makePopup(obj, epsg)).openOn(api.map);
+      });
+      layerInfo.group.addLayer(circle);
+      return true;
+    }
+
+    // --- ÇİZGİ/POLYLINE ÇİZİMİ ---[cite: 10]
+    if (!obj.coords || obj.coords.length < 2) return false;
     const latlngs = [];
     for (const [n, e] of obj.coords) {
       const ll = toWGS(n, e, epsg);
       if (ll) latlngs.push(ll);
     }
+    
     if (latlngs.length < 2) return false;
     if (!_bounds[obj.lc]) _bounds[obj.lc] = [];
     _bounds[obj.lc].push(...latlngs);
 
     let shape;
-    // gt=7 kapalı alan → Leaflet polygon
     if (obj.gt === 7 && obj.isClosed && latlngs.length >= 3) {
       shape = L.polygon(latlngs, {
-        color:       col,
-        weight:      2,
-        opacity:     0.9,
-        fillColor:   col,
-        fillOpacity: obj.isFilled ? 0.18 : 0.06,
+        color: col, weight: 2, opacity: 0.9,
+        fillColor: col, fillOpacity: obj.isFilled ? 0.18 : 0.06,
       });
     } else {
       shape = L.polyline(latlngs, { color: col, weight: 2, opacity: 0.88 });
@@ -249,8 +306,9 @@
       let obj = null;
       try {
         if (gt === 2 || gt === 4) obj = parseSegment(v, a, pos, lt, gt);
-        else if (gt === 7) obj = parsePolyline(v, a, pos, len, lt);
-        else if (gt === 10) obj = parseBox(v, a, pos, len, lt);
+        else if (gt === 3)  obj = parseCircle(v, a, pos, lt);
+        else if (gt === 7)  obj = parsePolyline(v, a, pos, len, lt);
+        else if (gt === 10) obj = parseRectangle(v, a, pos, lt);
       } catch (_) { obj = null; }
 
       if (obj && renderObject(obj, epsg, api, groups)) rendered++;
@@ -272,32 +330,25 @@
 
   NCZViewer.registerModule({
     name: 'lines-renderer',
-    init(api) { console.log('[lines-renderer] Yüklendi'); },
+    init(api) { console.log('[lines-renderer] Daire desteği ile yüklendi'); },
     onDataCleared() { Object.keys(_bounds).forEach(k => delete _bounds[k]); },
   });
 
   NCZViewer.events.on('v1:points:parsed', ({ buf, epsg, filename }) => {
-    const api = NCZViewer;
     if (!buf) return;
-    api.ui.loading(true);
+    NCZViewer.ui.loading(true);
     setTimeout(() => {
       try {
         Object.keys(_bounds).forEach(k => delete _bounds[k]);
-        const count = parseAndRender(buf, epsg, api);
+        const count = parseAndRender(buf, epsg, NCZViewer);
         if (count > 0) {
-          api.ui.refreshLayerLists();
-          api.ui.toast(`✓ ${count} çizgi/polyline yüklendi`, 'ok', 2000);
-          console.log(`[lines-renderer] ${count} çizgi/polyline render edildi`);
-        } else {
-          console.log('[lines-renderer] Çizgi bulunamadı');
+          NCZViewer.ui.refreshLayerLists();
+          NCZViewer.ui.toast(`✓ ${count} geometri yüklendi`, 'ok', 2000);
         }
       } catch (err) {
         console.error('[lines-renderer] Hata:', err);
-        api.ui.toast('Çizgi hatası: ' + err.message, 'err', 4000);
       }
-      api.ui.loading(false);
+      NCZViewer.ui.loading(false);
     }, 60);
   });
-
-  console.log('[lines-renderer] Modül hazır');
 })();
