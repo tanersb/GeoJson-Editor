@@ -180,68 +180,109 @@
   }
 
 
-  function parsePoints(buf) {
-  const v = new DataView(buf);
-  const a = new Uint8Array(buf);
-  const lt = readLayerTable(buf);
-  const points = [];
-  let pos = 0;
-
-  console.log("[parser-v1-points] Tarama başlatıldı, dosya boyutu:", buf.byteLength);
-
-  while (pos < buf.byteLength - 100) {
-    // 1. ADIM: İmzayı Bul (0x15 ve ardından gelen üç 0x00)
-    if (a[pos] === 0x15 && a[pos + 3] === 0x00 && a[pos + 4] === 0x00 && a[pos + 5] === 0x00) {
-      
-      const geomType = a[pos + 6]; // 1 = Nokta[cite: 6]
-      const base = pos + 7;
-
-      if (geomType === 1) {
-        try {
-          const lc = a[base];
-          const x = v.getFloat64(base + 1, true);  // Northing (X)
-          const y = v.getFloat64(base + 9, true);  // Easting (Y)
-          const z = v.getFloat32(base + 17, true); // Kot (Z)[cite: 6]
-          
-          // 2. ADIM: Veri Doğrulaması (Filtreyi genişletiyoruz)
-          // NCN dosyasındaki aralığa göre (X: ~4.5 milyon, Y: ~500 bin)
-          if (x > 3000000 && x < 6000000 && y > 100000 && y < 900000) {
-            const name = readName(a, pos);
-            
-            points.push({ 
-              gt: 1, lc, name, x, y, z,
-              layerName: lt[lc] || `LC_${lc}` 
-            });
-
-            // Nokta bulundu: toplam blok boyutu ikinci byte + 5.
-            // Örnek: gt=1 için 0x68 + 5 = 109 byte.
-            const size = (a[pos + 1] || 104) + 5;
-            pos += (size >= 80 && size <= 200) ? size : 109;
-            continue;
-          }
-        } catch (e) { }
-      }
+  function readTextPayload(bytes, pos, totalLen) {
+    // gt=5 TEXT kayıtlarında text genellikle blok başlangıcından +96'da uzunluk,
+    // +97'de içerik olarak durur. Kısa nokta etiketlerini yakalamak için kullanılır.
+    const lenPos = pos + 96;
+    if (lenPos >= bytes.length) return '';
+    const declared = bytes[lenPos];
+    if (declared < 1 || declared > 48) return '';
+    const textStart = pos + 97;
+    if (textStart + declared > pos + totalLen || textStart >= bytes.length) return '';
+    let out = '';
+    for (let i = 0; i < declared; i++) {
+      const c = bytes[textStart + i];
+      if (c === 0) break;
+      if (TR[c]) out += TR[c];
+      else if (c >= 32 && c < 127) out += String.fromCharCode(c);
+      else break;
     }
-    pos++; // İmza yoksa veya geçersizse 1 byte ilerle
+    return out.trim();
   }
 
-  console.log(`[parser-v1-points] Toplam ${points.length} nokta yakalandı.`);
-  return { points, layerTable: lt };
+  function isPointLikeLabel(txt) {
+    if (!txt) return false;
+    const t = txt.trim();
+    if (t.length < 1 || t.length > 12) return false;
+    // Pafta başlıkları / uzun notlar değil; nokta no, parsel no, G1, RS101 gibi kısa etiketler.
+    return /^[A-Za-zÇĞİÖŞÜçğıöşü0-9_\-.\/]+$/.test(t);
   }
 
-// readName fonksiyonunu da şu şekilde güncelle (Offset senkronu için):
-function readName(bytes, absolutePos) {
-  let s = '';
-  // İsim alanı 0x15 header'ından 87 byte sonra başlar (7 header + 80 payload offset)[cite: 6]
-  const nameStart = absolutePos + 87; 
-  for (let i = 0; i < 21; i++) {
-    const c = bytes[nameStart + i];
-    if (c === 0 || c < 32) break;
-    if (TR[c]) s += TR[c];
-    else s += String.fromCharCode(c);
+  function pointKey(x, y, name, gt) {
+    return `${gt}|${name || ''}|${Math.round(x * 1000)}|${Math.round(y * 1000)}`;
   }
-  return s.trim();
-}
+
+  function parsePoints(buf) {
+    const v = new DataView(buf);
+    const a = new Uint8Array(buf);
+    const lt = readLayerTable(buf);
+    const points = [];
+    const seen = new Set();
+    let pos = 0;
+
+    console.log("[parser-v1-points] Tarama başlatıldı, dosya boyutu:", buf.byteLength);
+
+    while (pos < buf.byteLength - 100) {
+      if (isGeomHeader(a, pos)) {
+        const geomType = a[pos + 6];
+        const totalLen = a[pos + 1] + a[pos + 2] * 256 + 5;
+        const safeLen = (totalLen > 7 && totalLen < 200000) ? totalLen : 1;
+        const base = pos + 7;
+
+        if (geomType === 1) {
+          try {
+            const lc = a[base];
+            const x = v.getFloat64(base + 1, true);
+            const y = v.getFloat64(base + 9, true);
+            const z = v.getFloat64(base + 17, true);
+            if (isValidUTM(x, y)) {
+              const name = readName(a, base);
+              const key = pointKey(x, y, name, 1);
+              if (!seen.has(key)) {
+                seen.add(key);
+                points.push({
+                  gt: 1, lc, name, x, y, z,
+                  layerName: lt[lc] || `LC_${lc}`
+                });
+              }
+            }
+          } catch (e) { }
+          pos += safeLen;
+          continue;
+        }
+
+        // Bazı Netcad projelerinde ekranda nokta gibi görünen değerler gt=5 TEXT objesi olarak saklanır.
+        // Bunları sadece kısa nokta etiketi ise ekliyoruz; uzun pafta başlıklarını almıyoruz.
+        if (geomType === 5) {
+          try {
+            const lc = a[base];
+            const x = v.getFloat64(pos + 8, true);
+            const y = v.getFloat64(pos + 16, true);
+            const text = readTextPayload(a, pos, safeLen);
+            if (isValidUTM(x, y) && isPointLikeLabel(text)) {
+              const key = pointKey(x, y, text, 5);
+              if (!seen.has(key)) {
+                seen.add(key);
+                points.push({
+                  gt: 5, lc, name: text, x, y, z: 0,
+                  isTextLabel: true,
+                  layerName: lt[lc] || `LC_${lc}`
+                });
+              }
+            }
+          } catch (e) { }
+          pos += safeLen;
+          continue;
+        }
+
+        if (safeLen > 1) { pos += safeLen; continue; }
+      }
+      pos++;
+    }
+
+    console.log(`[parser-v1-points] Toplam ${points.length} nokta/etiket yakalandı.`);
+    return { points, layerTable: lt };
+  }
 
   // ── Modülü kaydet ──────────────────────────────────────────────
   NCZViewer.registerModule({
@@ -266,27 +307,21 @@ function readName(bytes, absolutePos) {
           const { points, layerTable } = parsePoints(buf);
 
           if (points.length === 0) {
-            // ÖNEMLİ: Nokta bulunmasa bile event yayınlanmalı.
-            // Aksi halde çizgi/alan/export gibi modüller hiç tetiklenmiyordu.
-            console.warn('[parser-v1-points] Nokta geometrisi bulunamadı; diğer geometri modülleri için parse event yayınlanıyor');
-          } else {
-            console.log(`[parser-v1-points] ${points.length} nokta parse edildi`);
+            console.warn('[parser-v1-points] Nokta geometrisi bulunamadı');
+            NCZViewer.ui.loading(false);
+            return;
           }
 
-          const payload = {
+          console.log(`[parser-v1-points] ${points.length} nokta parse edildi`);
+
+          // v1:points:parsed event'ini yayınla[cite: 3]
+          NCZViewer.events.emit('v1:points:parsed', {
             points,
             layerTable,
             epsg,
             filename,
             buf,
-          };
-
-          // Yeni genel event: tüm v1 geometri modülleri bunu dinleyebilir.
-          NCZViewer.events.emit('ncz:v1:parsed', payload);
-
-          // Geriye dönük uyumluluk: mevcut modüller bu event'i dinliyor.
-          // Artık nokta sayısı 0 olsa bile yayınlanır.
-          NCZViewer.events.emit('v1:points:parsed', payload);
+          });
 
         } catch (err) {
           console.error('[parser-v1-points] Parse hatası:', err);
@@ -306,8 +341,7 @@ function readName(bytes, absolutePos) {
     readName,
     isValidUTM,
     isGeomHeader,
-    parsePoints,
-    BLOCK_SIZE: { 1: 109, 2: 106, 4: 'skip', 5: 'skip', 6: 'skip' },
+    BLOCK_SIZE: { 1: 109, 2: 106, 5: 101, 6: 97, 7: "variable" },
   };
 
   console.log('[parser-v1-points] Modül hazır');

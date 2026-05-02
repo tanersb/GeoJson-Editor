@@ -81,6 +81,30 @@
     if (!_bounds[point.lc]) _bounds[point.lc] = [];
     _bounds[point.lc].push([lat, lon]);
 
+    // gt=5 TEXT etiketleri Netcad'de nokta numarası / kot etiketi gibi görünür.
+    // Bu etiketleri ekstra nokta dairesi çizmeden, hafif yazı olarak gösteriyoruz.
+    if (point.isTextLabel) {
+      const label = (point.name || '').replace(/[<>&]/g, ch => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[ch]));
+      const marker = L.marker([lat, lon], {
+        interactive: true,
+        icon: L.divIcon({
+          className: 'ncz-text-label-icon',
+          html: `<div class="ncz-text-label" style="color:${col}">${label}</div>`,
+          iconSize: [1, 1],
+          iconAnchor: [0, 0]
+        })
+      });
+      marker.on('click', () => {
+        const ll = L.latLng(lat, lon);
+        L.popup({ maxWidth: 280 })
+          .setLatLng(ll)
+          .setContent(makePopup(point, ll, epsg))
+          .openOn(api.map);
+      });
+      group.addLayer(marker);
+      return;
+    }
+
     const marker = L.circleMarker([lat, lon], {
       radius: 4, color: col, fillColor: col,
       fillOpacity: 0.85, weight: 1.2, opacity: 0.9,
@@ -98,10 +122,10 @@
 
     if (point.name || (point.z !== undefined && Math.abs(point.z) > 0.0001)) {
       marker.bindTooltip(labelHtml, {
-        permanent: true, 
+        permanent: true,
         direction: 'center', // Etiketi noktanın tam ortasına koy
         className: 'ncz-lbl-transparent', // Leaflet'in varsayılan arkaplanını sil
-        opacity: 1 
+        opacity: 1
       });
     }
     // ----------------------------------------------
