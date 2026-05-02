@@ -213,8 +213,10 @@
               layerName: lt[lc] || `LC_${lc}` 
             });
 
-            // Nokta bulundu, bir sonraki olası noktaya kadar güvenli bir mesafe (80 byte) atla
-            pos += 80; 
+            // Nokta bulundu: toplam blok boyutu ikinci byte + 5.
+            // Örnek: gt=1 için 0x68 + 5 = 109 byte.
+            const size = (a[pos + 1] || 104) + 5;
+            pos += (size >= 80 && size <= 200) ? size : 109;
             continue;
           }
         } catch (e) { }
@@ -264,21 +266,27 @@ function readName(bytes, absolutePos) {
           const { points, layerTable } = parsePoints(buf);
 
           if (points.length === 0) {
-            console.warn('[parser-v1-points] Nokta geometrisi bulunamadı');
-            NCZViewer.ui.loading(false);
-            return;
+            // ÖNEMLİ: Nokta bulunmasa bile event yayınlanmalı.
+            // Aksi halde çizgi/alan/export gibi modüller hiç tetiklenmiyordu.
+            console.warn('[parser-v1-points] Nokta geometrisi bulunamadı; diğer geometri modülleri için parse event yayınlanıyor');
+          } else {
+            console.log(`[parser-v1-points] ${points.length} nokta parse edildi`);
           }
 
-          console.log(`[parser-v1-points] ${points.length} nokta parse edildi`);
-
-          // v1:points:parsed event'ini yayınla[cite: 3]
-          NCZViewer.events.emit('v1:points:parsed', {
+          const payload = {
             points,
             layerTable,
             epsg,
             filename,
             buf,
-          });
+          };
+
+          // Yeni genel event: tüm v1 geometri modülleri bunu dinleyebilir.
+          NCZViewer.events.emit('ncz:v1:parsed', payload);
+
+          // Geriye dönük uyumluluk: mevcut modüller bu event'i dinliyor.
+          // Artık nokta sayısı 0 olsa bile yayınlanır.
+          NCZViewer.events.emit('v1:points:parsed', payload);
 
         } catch (err) {
           console.error('[parser-v1-points] Parse hatası:', err);
@@ -298,7 +306,8 @@ function readName(bytes, absolutePos) {
     readName,
     isValidUTM,
     isGeomHeader,
-    BLOCK_SIZE: { 1: 108, 2: 106, 5: 98, 6: 97 },
+    parsePoints,
+    BLOCK_SIZE: { 1: 109, 2: 106, 4: 'skip', 5: 'skip', 6: 'skip' },
   };
 
   console.log('[parser-v1-points] Modül hazır');
