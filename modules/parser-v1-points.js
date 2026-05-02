@@ -337,9 +337,7 @@
           const { points, layerTable } = parsePoints(buf);
 
           if (points.length === 0) {
-            console.warn('[parser-v1-points] Nokta/Yazı geometrisi bulunamadı');
-            NCZViewer.ui.loading(false);
-            return;
+            console.warn('[parser-v1-points] Nokta/Yazı geometrisi bulunamadı (diğer modüller çalışmaya devam edecek)');
           }
 
           console.log(`[parser-v1-points] ${points.length} nokta parse edildi`);
