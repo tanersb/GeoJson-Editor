@@ -422,7 +422,7 @@ select:focus{border-color:var(--acc2)}
   </button>
   <div class="brand">
     <div class="brand-name">Online NCZ Viewer</div>
-	<div class="brand-sub">GIS · NCZ · KML / CSV <span class="ver-badge" id="ver-badge">v1.0.5</span></div>
+	<div class="brand-sub">GIS · NCZ · KML / CSV <span class="ver-badge" id="ver-badge">v1.0.7</span></div>
   </div>
   <div class="topstats" id="topStats" style="display:none">
     <div class="tst"><span class="tst-val" id="ts-g" style="color:var(--acc)">—</span><span class="tst-lbl">Geometri</span></div>
@@ -688,6 +688,7 @@ window.NCZViewer = (function(){
   $$('.mtab').forEach(b=>b.addEventListener('click',()=>setTile(b.dataset.t)));
   window.addEventListener('resize',()=>setTimeout(()=>map.invalidateSize(),100));
 
+
   // ── Koordinat state ────────────────────────────────────────────
   let _epsg='5254', _ll=null, _utm=null;
   function calcUTM(latlng){
@@ -758,7 +759,12 @@ window.NCZViewer = (function(){
       events.emit('layer:opacity',{lc,value:v});
     },
     clear(){
-      Object.values(layers._reg).forEach(l=>l.group?.removeFrom(map));
+      Object.values(layers._reg).forEach(l=>{
+        if(l.group){
+          l.group.clearLayers(); // içindeki marker/polyline'ları sil
+          l.group.removeFrom(map);
+        }
+      });
       layers._reg={};
     },
   };
@@ -874,6 +880,12 @@ window.NCZViewer = (function(){
   function handleFile(file){
     if(!file)return;
     ['fn-d','fn-m'].forEach(id=>$(id).textContent=file.name);
+    // Yeni dosya gelince önceki veriyi tamamen temizle
+    map.closePopup();
+    layers.clear();
+    refreshLayerLists();
+    hideLayerUI();
+    events.emit('data:cleared',{});
     loading(true);
     const reader=new FileReader();
     reader.onload=e=>{
