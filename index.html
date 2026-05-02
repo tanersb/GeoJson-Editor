@@ -80,6 +80,12 @@ input,select{font-family:inherit;outline:none}
 /* ── LAYOUT ── */
 .main{flex:1;display:flex;overflow:hidden;min-height:0}
 
+.ver-badge{
+  font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;letter-spacing:.4px;
+  background:rgba(74,222,128,.12);border:1px solid rgba(74,222,128,.35);color:var(--acc);
+  padding:1px 5px;border-radius:4px;white-space:nowrap;
+}
+
 /* ── SIDEBAR ── */
 .sidebar{
   width:252px; background:var(--s1); border-right:1px solid var(--bd);
@@ -416,7 +422,7 @@ select:focus{border-color:var(--acc2)}
   </button>
   <div class="brand">
     <div class="brand-name">Online NCZ Viewer</div>
-    <div class="brand-sub">GIS · GeoJSON / KML / CSV</div>
+	<div class="brand-sub">GIS · NCZ · KML / CSV <span class="ver-badge" id="ver-badge">v1.0.2</span></div>
   </div>
   <div class="topstats" id="topStats" style="display:none">
     <div class="tst"><span class="tst-val" id="ts-g" style="color:var(--acc)">—</span><span class="tst-lbl">Geometri</span></div>
@@ -1227,6 +1233,7 @@ function registerModule(mod) {
 <script src="modules/map-export.js"></script>
 <script src="modules/lines.js"></script>
 <script src="modules/export.js"></script>
+<script src="modules/export-kml-csv.js"></script>
 <!-- <script src="modules/lines.js"></script> -->
 <!-- <script src="modules/polygons.js"></script> -->
 
