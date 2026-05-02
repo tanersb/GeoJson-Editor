@@ -918,6 +918,37 @@ window.NCZViewer = (function(){
   $('drCl').addEventListener('click',closeDr);
   $('veil').addEventListener('click',closeDr);
 
+  // ── Merkezi FitBounds — tüm katmanlar yüklendikten sonra ─────
+  (function(){
+    let _fitTimer = null;
+    function fitAll(){
+      const allPts = [];
+      layers.all().forEach(([, info]) => {
+        if (!info.group) return;
+        info.group.eachLayer(ly => {
+          try {
+            if (ly.getBounds) {
+              const b = ly.getBounds();
+              allPts.push(b.getSouthWest(), b.getNorthEast());
+            } else if (ly.getLatLng) {
+              allPts.push(ly.getLatLng());
+            }
+          } catch(_){}
+        });
+      });
+      if (allPts.length > 0) {
+        try { map.fitBounds(L.latLngBounds(allPts).pad(0.08), { animate: true }); } catch(_){}
+      }
+    }
+    function scheduleFit(){
+      clearTimeout(_fitTimer);
+      _fitTimer = setTimeout(fitAll, 350);
+    }
+    events.on('v1:points:parsed', scheduleFit);
+    events.on('v1:lines:parsed',  scheduleFit);
+    events.on('data:cleared', () => clearTimeout(_fitTimer));
+  })();
+
   // ── Modül kayıt sistemi ────────────────────────────────────────
   const _modules = [];
 function registerModule(mod) {
